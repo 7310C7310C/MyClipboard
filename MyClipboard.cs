@@ -77,7 +77,7 @@ namespace MyClipboard
         private bool isHovered = false;
         private Color normalColor, hoverColor, textColor;
         
-        public ClipboardItem Item => item;
+        public ClipboardItem Item { get { return item; } }
         public event EventHandler OnDoubleClickItem;
         public event EventHandler OnCopyRequested;
         public event EventHandler OnDeleteRequested;
