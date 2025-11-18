@@ -301,7 +301,6 @@ namespace MyClipboard
 
                 y += itemHeight;
             }
-        }   listPanel.Invalidate();
         }
 
         private void ListPanel_MouseDown(object sender, MouseEventArgs e)
@@ -340,6 +339,23 @@ namespace MyClipboard
                     PasteItem(clipboardHistory[itemIndex]);
                 }
             }
+        }
+
+        private void ListPanel_MouseWheel(object sender, MouseEventArgs e)
+        {
+            int delta = e.Delta / 120;
+            scrollOffset -= delta * 30;
+            
+            int totalHeight = 0;
+            for (int i = 0; i < itemHeights.Count; i++)
+            {
+                totalHeight += itemHeights[i];
+            }
+            
+            int maxScroll = Math.Max(0, totalHeight - listPanel.ClientSize.Height);
+            scrollOffset = Math.Max(0, Math.Min(scrollOffset, maxScroll));
+            
+            listPanel.Invalidate();
         }
 
         private int GetItemIndexAtPoint(Point point)
@@ -549,10 +565,10 @@ namespace MyClipboard
                 // 在UI線程中更新界面
                 if (this.InvokeRequired)
                 {
-                    this.Invoke(new Action(() => {
+                    this.Invoke((MethodInvoker)delegate {
                         RefreshListView();
                         SaveHistory();
-                    }));
+                    });
                 }
                 else
                 {
