@@ -55,6 +55,7 @@ namespace MyClipboard
         public string Text { get; set; }
         public string Format { get; set; }
         public byte[] Data { get; set; }
+        public bool IsFavorite { get; set; }
         
         public override string ToString()
         {
@@ -84,11 +85,15 @@ namespace MyClipboard
         private Panel listPanel;
         private Panel scrollBarPanel;
         private Button minimizeButton;
+        private Button favoritesButton;
         private const int ITEM_HEIGHT = 60;
         private bool firstRun = true;
         private bool scrollBarDragging = false;
         private int scrollBarDragStart = 0;
         private int scrollOffsetDragStart = 0;
+        private bool showingFavorites = false;
+        private Color favoriteBgColor1Light, favoriteBgColor2Light;
+        private Color favoriteBgColor1Dark, favoriteBgColor2Dark;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -194,6 +199,21 @@ namespace MyClipboard
             
             // 滚动条不再需要计时器隐藏
             
+            // 收藏按钮
+            favoritesButton = new Button();
+            favoritesButton.Text = "我的收藏";
+            favoritesButton.Size = new Size(80, 30);
+            favoritesButton.Location = new Point(this.ClientSize.Width - 125, 5);
+            favoritesButton.FlatStyle = FlatStyle.Flat;
+            favoritesButton.FlatAppearance.BorderSize = 0;
+            favoritesButton.BackColor = Color.FromArgb(60, 60, 60);
+            favoritesButton.ForeColor = Color.White;
+            favoritesButton.Font = new Font("Arial", 9F);
+            favoritesButton.Cursor = Cursors.Hand;
+            favoritesButton.Click += FavoritesButton_Click;
+            contentPanel.Controls.Add(favoritesButton);
+            favoritesButton.BringToFront();
+            
             // 最小化按钮
             minimizeButton = new Button();
             minimizeButton.Text = "—";
@@ -214,7 +234,10 @@ namespace MyClipboard
             listContextMenu.Items.Add("複製", null, CopyItem_Click);
             listContextMenu.Items.Add("刪除", null, DeleteItem_Click);
             listContextMenu.Items.Add(new ToolStripSeparator());
+            listContextMenu.Items.Add("收藏", null, ToggleFavorite_Click);
+            listContextMenu.Items.Add(new ToolStripSeparator());
             listContextMenu.Items.Add("清空", null, ClearAll_Click);
+            listContextMenu.Opening += ListContextMenu_Opening;
 
             // 托盤圖示
             trayIcon = new NotifyIcon();
@@ -224,7 +247,7 @@ namespace MyClipboard
             
             // 托盤右鍵選單
             ContextMenuStrip trayMenu = new ContextMenuStrip();
-            trayMenu.Items.Add("顯示/隱藏", null, (s, ev) => {
+            trayMenu.Items.Add("顯示 / 隱藏", null, (s, ev) => {
                 ToggleWindow();
             });
             
@@ -311,7 +334,12 @@ namespace MyClipboard
 
         private void ListPanel_Paint(object sender, PaintEventArgs e)
         {
-            if (clipboardHistory.Count == 0)
+            // 获取要显示的列表
+            List<ClipboardItem> displayList = showingFavorites 
+                ? clipboardHistory.Where(item => item.IsFavorite).ToList()
+                : clipboardHistory;
+            
+            if (displayList.Count == 0)
                 return;
 
             int y = -scrollOffset;
@@ -319,7 +347,7 @@ namespace MyClipboard
             int startIndex = Math.Max(0, scrollOffset / ITEM_HEIGHT);
             int visibleCount = (listPanel.ClientSize.Height / ITEM_HEIGHT) + 2;
             
-            for (int i = startIndex; i < Math.Min(startIndex + visibleCount, clipboardHistory.Count); i++)
+            for (int i = startIndex; i < Math.Min(startIndex + visibleCount, displayList.Count); i++)
             {
                 int itemY = i * ITEM_HEIGHT - scrollOffset;
                 
@@ -327,11 +355,22 @@ namespace MyClipboard
                 if (itemY + ITEM_HEIGHT < 0 || itemY > listPanel.ClientSize.Height)
                     continue;
 
-                ClipboardItem item = clipboardHistory[i];
+                ClipboardItem item = displayList[i];
                 Rectangle itemRect = new Rectangle(0, itemY, panelWidth, ITEM_HEIGHT);
                 
-                // 隴行換色（增強對比）
-                Color itemBgColor = (i % 2 == 0) ? bgColor1 : bgColor2;
+                // 收藏项使用黄色背景，普通项隔行换色
+                Color itemBgColor;
+                if (item.IsFavorite)
+                {
+                    itemBgColor = (i % 2 == 0) 
+                        ? (isDarkTheme ? favoriteBgColor1Dark : favoriteBgColor1Light)
+                        : (isDarkTheme ? favoriteBgColor2Dark : favoriteBgColor2Light);
+                }
+                else
+                {
+                    itemBgColor = (i % 2 == 0) ? bgColor1 : bgColor2;
+                }
+                
                 using (SolidBrush bgBrush = new SolidBrush(itemBgColor))
                 {
                     e.Graphics.FillRectangle(bgBrush, itemRect);
@@ -343,7 +382,7 @@ namespace MyClipboard
                 {
                     try
                     {
-                        int imageIndex = GetImageIndex(i);
+                        int imageIndex = GetImageIndexForItem(item);
                         if (imageIndex >= 0 && imageIndex < imageList.Images.Count)
                         {
                             Image thumbnail = imageList.Images[imageIndex];
@@ -397,9 +436,13 @@ namespace MyClipboard
             if (e.Button == MouseButtons.Left)
             {
                 int itemIndex = GetItemIndexAtPoint(e.Location);
-                if (itemIndex >= 0 && itemIndex < clipboardHistory.Count)
+                List<ClipboardItem> displayList = showingFavorites 
+                    ? clipboardHistory.Where(item => item.IsFavorite).ToList()
+                    : clipboardHistory;
+                
+                if (itemIndex >= 0 && itemIndex < displayList.Count)
                 {
-                    PasteItem(clipboardHistory[itemIndex]);
+                    PasteItem(displayList[itemIndex]);
                 }
             }
         }
@@ -407,9 +450,13 @@ namespace MyClipboard
         private void ListPanel_MouseWheel(object sender, MouseEventArgs e)
         {
             int delta = e.Delta / 120;
-            scrollOffset -= delta * 30;
+            scrollOffset -= delta * 60;
             
-            int totalHeight = clipboardHistory.Count * ITEM_HEIGHT;
+            List<ClipboardItem> displayList = showingFavorites 
+                ? clipboardHistory.Where(item => item.IsFavorite).ToList()
+                : clipboardHistory;
+            
+            int totalHeight = displayList.Count * ITEM_HEIGHT;
             int maxScroll = Math.Max(0, totalHeight - listPanel.ClientSize.Height);
             scrollOffset = Math.Max(0, Math.Min(scrollOffset, maxScroll));
             
@@ -421,7 +468,8 @@ namespace MyClipboard
             if (e.Button == MouseButtons.Left)
             {
                 scrollBarDragging = true;
-                scrollBarDragStart = e.Y;
+                // 记录滚动条当前的Top位置（相对于listPanel）
+                scrollBarDragStart = scrollBarPanel.Top;
                 scrollOffsetDragStart = scrollOffset;
             }
         }
@@ -430,18 +478,25 @@ namespace MyClipboard
         {
             if (scrollBarDragging)
             {
-                int deltaY = e.Y - scrollBarDragStart;
-                int totalHeight = clipboardHistory.Count * ITEM_HEIGHT;
-                int scrollDelta = (deltaY * totalHeight) / listPanel.ClientSize.Height;
+                // 计算滚动条的新位置（鼠标相对于listPanel的Y坐标 - 鼠标在滚动条内的相对位置）
+                Point mouseInPanel = listPanel.PointToClient(Control.MousePosition);
+                int newScrollBarTop = mouseInPanel.Y - (scrollBarPanel.Height / 2);
                 
-                int newScrollOffset = scrollOffsetDragStart + scrollDelta;
+                // 限制滚动条在有效范围内
+                newScrollBarTop = Math.Max(0, Math.Min(newScrollBarTop, listPanel.ClientSize.Height - scrollBarPanel.Height));
+                
+                // 根据滚动条位置计算scrollOffset
+                List<ClipboardItem> displayList = showingFavorites 
+                    ? clipboardHistory.Where(item => item.IsFavorite).ToList()
+                    : clipboardHistory;
+                
+                int totalHeight = displayList.Count * ITEM_HEIGHT;
                 int maxScroll = Math.Max(0, totalHeight - listPanel.ClientSize.Height);
-                newScrollOffset = Math.Max(0, Math.Min(newScrollOffset, maxScroll));
                 
-                // 只在滚动偏移改变时才重绘
-                if (newScrollOffset != scrollOffset)
+                if (listPanel.ClientSize.Height > scrollBarPanel.Height)
                 {
-                    scrollOffset = newScrollOffset;
+                    scrollOffset = (newScrollBarTop * totalHeight) / listPanel.ClientSize.Height;
+                    scrollOffset = Math.Max(0, Math.Min(scrollOffset, maxScroll));
                     listPanel.Invalidate();
                 }
             }
@@ -454,13 +509,17 @@ namespace MyClipboard
 
         private void UpdateScrollBar()
         {
-            if (clipboardHistory.Count == 0)
+            List<ClipboardItem> displayList = showingFavorites 
+                ? clipboardHistory.Where(item => item.IsFavorite).ToList()
+                : clipboardHistory;
+            
+            if (displayList.Count == 0)
             {
                 scrollBarPanel.Visible = false;
                 return;
             }
 
-            int totalHeight = clipboardHistory.Count * ITEM_HEIGHT;
+            int totalHeight = displayList.Count * ITEM_HEIGHT;
             if (totalHeight <= listPanel.ClientSize.Height)
             {
                 scrollBarPanel.Visible = false;
@@ -481,6 +540,54 @@ namespace MyClipboard
         {
             this.Hide();
         }
+        
+        private void FavoritesButton_Click(object sender, EventArgs e)
+        {
+            showingFavorites = !showingFavorites;
+            favoritesButton.Text = showingFavorites ? "返回首页" : "我的收藏";
+            scrollOffset = 0;
+            listPanel.Invalidate();
+        }
+        
+        private void ToggleFavorite_Click(object sender, EventArgs e)
+        {
+            Point mousePos = listPanel.PointToClient(Control.MousePosition);
+            int itemIndex = GetItemIndexAtPoint(mousePos);
+            
+            if (itemIndex >= 0)
+            {
+                List<ClipboardItem> displayList = showingFavorites 
+                    ? clipboardHistory.Where(item => item.IsFavorite).ToList()
+                    : clipboardHistory;
+                
+                if (itemIndex < displayList.Count)
+                {
+                    displayList[itemIndex].IsFavorite = !displayList[itemIndex].IsFavorite;
+                    listPanel.Invalidate();
+                    SaveHistory();
+                }
+            }
+        }
+        
+        private void ListContextMenu_Opening(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            Point mousePos = listPanel.PointToClient(Control.MousePosition);
+            int itemIndex = GetItemIndexAtPoint(mousePos);
+            
+            if (itemIndex >= 0)
+            {
+                List<ClipboardItem> displayList = showingFavorites 
+                    ? clipboardHistory.Where(item => item.IsFavorite).ToList()
+                    : clipboardHistory;
+                
+                if (itemIndex < displayList.Count)
+                {
+                    bool isFavorite = displayList[itemIndex].IsFavorite;
+                    // 更新收藏菜单项的文字
+                    listContextMenu.Items[3].Text = isFavorite ? "取消收藏" : "收藏";
+                }
+            }
+        }
 
         private void ToggleWindow()
         {
@@ -499,8 +606,12 @@ namespace MyClipboard
 
         private int GetItemIndexAtPoint(Point point)
         {
+            List<ClipboardItem> displayList = showingFavorites 
+                ? clipboardHistory.Where(item => item.IsFavorite).ToList()
+                : clipboardHistory;
+            
             int itemIndex = (scrollOffset + point.Y) / ITEM_HEIGHT;
-            if (itemIndex >= 0 && itemIndex < clipboardHistory.Count)
+            if (itemIndex >= 0 && itemIndex < displayList.Count)
             {
                 return itemIndex;
             }
@@ -518,6 +629,23 @@ namespace MyClipboard
                 }
             }
             return imageIndex;
+        }
+        
+        private int GetImageIndexForItem(ClipboardItem targetItem)
+        {
+            int imageIndex = 0;
+            foreach (var item in clipboardHistory)
+            {
+                if (item == targetItem)
+                {
+                    return imageIndex;
+                }
+                if (item.Format == "Image" && item.Data != null)
+                {
+                    imageIndex++;
+                }
+            }
+            return -1;
         }
 
         private void Form_MouseDown(object sender, MouseEventArgs e)
@@ -908,7 +1036,7 @@ namespace MyClipboard
 
             // 创建自定义对话框
             Form tipForm = new Form();
-            tipForm.Text = "快捷鍵提示";
+            tipForm.Text = "使用提示";
             tipForm.Size = new Size(400, 250);
             tipForm.StartPosition = FormStartPosition.CenterScreen;
             tipForm.FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -918,9 +1046,8 @@ namespace MyClipboard
 
             Label messageLabel = new Label();
             messageLabel.Text = "歡迎使用 MyClipboard！\n\n" +
-                "快捷鍵：Ctrl + Alt + X 顯示/隱藏界面\n" +
-                "雙擊記錄可直接貼上\n" +
-                "右鍵托盤圖示可顯示/隱藏界面";
+                "快捷鍵：Ctrl + Alt + X 顯示 / 隱藏界面\n" +
+                "雙擊記錄可直接粘貼";
             messageLabel.AutoSize = false;
             messageLabel.Size = new Size(360, 120);
             messageLabel.Location = new Point(20, 20);
@@ -958,6 +1085,11 @@ namespace MyClipboard
                 textColor = Color.White;
                 borderColor = Color.FromArgb(63, 63, 70);
                 this.BackColor = Color.FromArgb(63, 63, 70);
+                
+                // 深色主题收藏颜色（较暗的黄色）
+                favoriteBgColor1Dark = Color.FromArgb(70, 70, 30);
+                favoriteBgColor2Dark = Color.FromArgb(90, 90, 40);
+                
                 if (listPanel != null)
                 {
                     listPanel.BackColor = Color.FromArgb(30, 30, 30);
@@ -968,6 +1100,11 @@ namespace MyClipboard
                     minimizeButton.BackColor = Color.FromArgb(60, 60, 60);
                     minimizeButton.ForeColor = Color.White;
                 }
+                if (favoritesButton != null)
+                {
+                    favoritesButton.BackColor = Color.FromArgb(60, 60, 60);
+                    favoritesButton.ForeColor = Color.White;
+                }
             }
             else
             {
@@ -976,6 +1113,11 @@ namespace MyClipboard
                 textColor = Color.Black;
                 borderColor = Color.FromArgb(180, 180, 180);
                 this.BackColor = Color.FromArgb(180, 180, 180);
+                
+                // 浅色主题收藏颜色（浅黄色）
+                favoriteBgColor1Light = Color.FromArgb(255, 255, 220);
+                favoriteBgColor2Light = Color.FromArgb(255, 255, 200);
+                
                 if (listPanel != null)
                 {
                     listPanel.BackColor = Color.FromArgb(250, 250, 250);
@@ -985,6 +1127,11 @@ namespace MyClipboard
                 {
                     minimizeButton.BackColor = Color.FromArgb(220, 220, 220);
                     minimizeButton.ForeColor = Color.Black;
+                }
+                if (favoritesButton != null)
+                {
+                    favoritesButton.BackColor = Color.FromArgb(220, 220, 220);
+                    favoritesButton.ForeColor = Color.Black;
                 }
             }
             
@@ -1013,6 +1160,7 @@ namespace MyClipboard
                         writer.Write(item.Time.ToBinary());
                         writer.Write(item.Format ?? "");
                         writer.Write(item.Text ?? "");
+                        writer.Write(item.IsFavorite);
                         
                         if (item.Data != null)
                         {
@@ -1049,6 +1197,19 @@ namespace MyClipboard
                         item.Time = DateTime.FromBinary(reader.ReadInt64());
                         item.Format = reader.ReadString();
                         item.Text = reader.ReadString();
+                        
+                        // 尝试读取收藏状态（兼容旧版本）
+                        if (fs.Position < fs.Length)
+                        {
+                            try
+                            {
+                                item.IsFavorite = reader.ReadBoolean();
+                            }
+                            catch
+                            {
+                                item.IsFavorite = false;
+                            }
+                        }
                         
                         int dataLength = reader.ReadInt32();
                         if (dataLength > 0)
