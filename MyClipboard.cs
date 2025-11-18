@@ -86,12 +86,14 @@ namespace MyClipboard
         private Panel scrollBarPanel;
         private Button minimizeButton;
         private Button favoritesButton;
+        private TextBox searchBox;
         private const int ITEM_HEIGHT = 60;
         private bool firstRun = true;
         private bool scrollBarDragging = false;
         private int scrollBarDragStart = 0;
         private int scrollOffsetDragStart = 0;
         private bool showingFavorites = false;
+        private string searchFilter = "";
         private Color favoriteBgColor1Light, favoriteBgColor2Light;
         private Color favoriteBgColor1Dark, favoriteBgColor2Dark;
 
@@ -198,6 +200,31 @@ namespace MyClipboard
             scrollBarPanel.BringToFront();
             
             // 滚动条不再需要计时器隐藏
+            
+            // 搜索框
+            searchBox = new TextBox();
+            searchBox.Size = new Size(150, 30);
+            searchBox.Location = new Point(this.ClientSize.Width - 280, 8);
+            searchBox.Font = new Font("Consolas", 9F);
+            searchBox.ForeColor = Color.Gray;
+            searchBox.Text = "搜索...";
+            searchBox.TextChanged += SearchBox_TextChanged;
+            searchBox.GotFocus += (s, ev) => {
+                if (searchBox.Text == "搜索...")
+                {
+                    searchBox.Text = "";
+                    searchBox.ForeColor = isDarkTheme ? Color.White : Color.Black;
+                }
+            };
+            searchBox.LostFocus += (s, ev) => {
+                if (string.IsNullOrWhiteSpace(searchBox.Text))
+                {
+                    searchBox.Text = "搜索...";
+                    searchBox.ForeColor = Color.Gray;
+                }
+            };
+            contentPanel.Controls.Add(searchBox);
+            searchBox.BringToFront();
             
             // 收藏按钮
             favoritesButton = new Button();
@@ -351,13 +378,39 @@ namespace MyClipboard
             // 不自动隱藏，保持置顶
             // this.Hide();
         }
+        
+        private void SearchBox_TextChanged(object sender, EventArgs e)
+        {
+            if (searchBox.Text == "搜索...")
+            {
+                searchFilter = "";
+            }
+            else
+            {
+                searchFilter = searchBox.Text;
+            }
+            scrollOffset = 0;
+            listPanel.Invalidate();
+        }
 
         private void ListPanel_Paint(object sender, PaintEventArgs e)
         {
-            // 获取要显示的列表
-            List<ClipboardItem> displayList = showingFavorites 
-                ? clipboardHistory.Where(item => item.IsFavorite).ToList()
-                : clipboardHistory;
+            // 获取要显示的列表（支持搜索过滤）
+            List<ClipboardItem> displayList = clipboardHistory;
+            
+            // 应用收藏过滤
+            if (showingFavorites)
+            {
+                displayList = displayList.Where(item => item.IsFavorite).ToList();
+            }
+            
+            // 应用搜索过滤
+            if (!string.IsNullOrWhiteSpace(searchFilter))
+            {
+                displayList = displayList.Where(item => 
+                    item.Text != null && item.Text.IndexOf(searchFilter, StringComparison.OrdinalIgnoreCase) >= 0
+                ).ToList();
+            }
             
             if (displayList.Count == 0)
                 return;
@@ -456,9 +509,7 @@ namespace MyClipboard
             if (e.Button == MouseButtons.Left)
             {
                 int itemIndex = GetItemIndexAtPoint(e.Location);
-                List<ClipboardItem> displayList = showingFavorites 
-                    ? clipboardHistory.Where(item => item.IsFavorite).ToList()
-                    : clipboardHistory;
+                List<ClipboardItem> displayList = GetFilteredDisplayList();
                 
                 if (itemIndex >= 0 && itemIndex < displayList.Count)
                 {
@@ -472,9 +523,7 @@ namespace MyClipboard
             int delta = e.Delta / 120;
             scrollOffset -= delta * 60;
             
-            List<ClipboardItem> displayList = showingFavorites 
-                ? clipboardHistory.Where(item => item.IsFavorite).ToList()
-                : clipboardHistory;
+            List<ClipboardItem> displayList = GetFilteredDisplayList();
             
             int totalHeight = displayList.Count * ITEM_HEIGHT;
             int maxScroll = Math.Max(0, totalHeight - listPanel.ClientSize.Height);
@@ -506,9 +555,7 @@ namespace MyClipboard
                 newScrollBarTop = Math.Max(0, Math.Min(newScrollBarTop, listPanel.ClientSize.Height - scrollBarPanel.Height));
                 
                 // 根据滚动条位置计算scrollOffset
-                List<ClipboardItem> displayList = showingFavorites 
-                    ? clipboardHistory.Where(item => item.IsFavorite).ToList()
-                    : clipboardHistory;
+                List<ClipboardItem> displayList = GetFilteredDisplayList();
                 
                 int totalHeight = displayList.Count * ITEM_HEIGHT;
                 int maxScroll = Math.Max(0, totalHeight - listPanel.ClientSize.Height);
@@ -529,9 +576,7 @@ namespace MyClipboard
 
         private void UpdateScrollBar()
         {
-            List<ClipboardItem> displayList = showingFavorites 
-                ? clipboardHistory.Where(item => item.IsFavorite).ToList()
-                : clipboardHistory;
+            List<ClipboardItem> displayList = GetFilteredDisplayList();
             
             if (displayList.Count == 0)
             {
@@ -565,6 +610,12 @@ namespace MyClipboard
         {
             showingFavorites = !showingFavorites;
             favoritesButton.Text = showingFavorites ? "返回首页" : "我的收藏";
+            
+            // 切换视图时清空搜索
+            searchBox.Text = "搜索...";
+            searchBox.ForeColor = Color.Gray;
+            searchFilter = "";
+            
             scrollOffset = 0;
             listPanel.Invalidate();
         }
@@ -576,9 +627,7 @@ namespace MyClipboard
             
             if (itemIndex >= 0)
             {
-                List<ClipboardItem> displayList = showingFavorites 
-                    ? clipboardHistory.Where(item => item.IsFavorite).ToList()
-                    : clipboardHistory;
+                List<ClipboardItem> displayList = GetFilteredDisplayList();
                 
                 if (itemIndex < displayList.Count)
                 {
@@ -587,6 +636,27 @@ namespace MyClipboard
                     SaveHistory();
                 }
             }
+        }
+        
+        private List<ClipboardItem> GetFilteredDisplayList()
+        {
+            List<ClipboardItem> displayList = clipboardHistory;
+            
+            // 应用收藏过滤
+            if (showingFavorites)
+            {
+                displayList = displayList.Where(item => item.IsFavorite).ToList();
+            }
+            
+            // 应用搜索过滤
+            if (!string.IsNullOrWhiteSpace(searchFilter))
+            {
+                displayList = displayList.Where(item => 
+                    item.Text != null && item.Text.IndexOf(searchFilter, StringComparison.OrdinalIgnoreCase) >= 0
+                ).ToList();
+            }
+            
+            return displayList;
         }
         
         private void ListContextMenu_Opening(object sender, System.ComponentModel.CancelEventArgs e)
@@ -599,9 +669,7 @@ namespace MyClipboard
             
             if (itemIndex >= 0)
             {
-                List<ClipboardItem> displayList = showingFavorites 
-                    ? clipboardHistory.Where(item => item.IsFavorite).ToList()
-                    : clipboardHistory;
+                List<ClipboardItem> displayList = GetFilteredDisplayList();
                 
                 if (itemIndex < displayList.Count)
                 {
@@ -620,18 +688,20 @@ namespace MyClipboard
             }
             else
             {
+                // 优化：先设置不透明再显示，避免渐变效果
+                this.Opacity = 1.0;
                 this.Show();
                 this.Activate();
                 this.BringToFront();
                 this.TopMost = true;
+                // 刷新显示以确保数据最新
+                listPanel.Invalidate();
             }
         }
 
         private int GetItemIndexAtPoint(Point point)
         {
-            List<ClipboardItem> displayList = showingFavorites 
-                ? clipboardHistory.Where(item => item.IsFavorite).ToList()
-                : clipboardHistory;
+            List<ClipboardItem> displayList = GetFilteredDisplayList();
             
             int itemIndex = (scrollOffset + point.Y) / ITEM_HEIGHT;
             if (itemIndex >= 0 && itemIndex < displayList.Count)
@@ -708,7 +778,9 @@ namespace MyClipboard
                 }
                 else
                 {
-                    this.Show();
+                    // 优化：直接显示，减少不必要的调用
+                    this.Opacity = 1.0;
+                    this.Visible = true;
                     this.Activate();
                     this.BringToFront();
                     this.TopMost = true;
@@ -1129,6 +1201,11 @@ namespace MyClipboard
                     favoritesButton.BackColor = Color.FromArgb(60, 60, 60);
                     favoritesButton.ForeColor = Color.White;
                 }
+                if (searchBox != null && searchBox.Text != "搜索...")
+                {
+                    searchBox.BackColor = Color.FromArgb(40, 40, 40);
+                    searchBox.ForeColor = Color.White;
+                }
             }
             else
             {
@@ -1156,6 +1233,11 @@ namespace MyClipboard
                 {
                     favoritesButton.BackColor = Color.FromArgb(220, 220, 220);
                     favoritesButton.ForeColor = Color.Black;
+                }
+                if (searchBox != null && searchBox.Text != "搜索...")
+                {
+                    searchBox.BackColor = Color.White;
+                    searchBox.ForeColor = Color.Black;
                 }
             }
             
