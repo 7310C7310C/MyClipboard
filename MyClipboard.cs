@@ -296,28 +296,34 @@ namespace MyClipboard
                 }
             };
 
-            // 尝试加载自定义图标
+                        // 尝试加载自定义图标
             try
             {
                 string exePath = Application.ExecutablePath;
                 string exeDir = Path.GetDirectoryName(exePath);
                 string icoPath = Path.Combine(exeDir, "icon.ico");
                 
+                // 优先尝试加载 icon.ico 文件
                 if (File.Exists(icoPath))
                 {
                     trayIcon.Icon = new Icon(icoPath);
                     this.Icon = new Icon(icoPath);
                 }
-                else
+                else if (!exePath.StartsWith("\\\\"))
                 {
-                    // 从exe中提取图标
-                    this.Icon = Icon.ExtractAssociatedIcon(exePath);
-                    trayIcon.Icon = Icon.ExtractAssociatedIcon(exePath);
+                    // 只在非 UNC 路径时尝试提取图标
+                    Icon extractedIcon = Icon.ExtractAssociatedIcon(exePath);
+                    if (extractedIcon != null)
+                    {
+                        this.Icon = extractedIcon;
+                        trayIcon.Icon = extractedIcon;
+                    }
                 }
+                // UNC 路径且无 icon.ico 时，使用默认图标（已在初始化时设置）
             }
             catch
             {
-                // 使用默认图标
+                // 加载失败时使用默认图标（已在初始化时设置）
             }
 
             // 窗体事件
@@ -333,63 +339,10 @@ namespace MyClipboard
             this.BringToFront();
             this.TopMost = true;
             
-            // 创建开机自启动快捷方式
-            CreateStartupShortcut();
-            
             // 首次運行提示
             if (firstRun)
             {
                 ShowFirstRunTip();
-            }
-        }
-        
-        private void CreateStartupShortcut()
-        {
-            try
-            {
-                string startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
-                string shortcutPath = Path.Combine(startupFolder, "MyClipboard.lnk");
-                
-                // 如果快捷方式已存在，检查是否指向当前exe
-                if (File.Exists(shortcutPath))
-                {
-                    // 简单检查：如果快捷方式存在就跳过（避免每次启动都重建）
-                    return;
-                }
-                
-                // 使用 VBScript 创建快捷方式（.NET 4.0 兼容方案）
-                string exePath = Application.ExecutablePath;
-                string vbsPath = Path.Combine(Path.GetTempPath(), "CreateShortcut.vbs");
-                
-                string vbsScript = string.Format(
-                    "Set oWS = WScript.CreateObject(\"WScript.Shell\")\n" +
-                    "sLinkFile = \"{0}\"\n" +
-                    "Set oLink = oWS.CreateShortcut(sLinkFile)\n" +
-                    "oLink.TargetPath = \"{1}\"\n" +
-                    "oLink.WorkingDirectory = \"{2}\"\n" +
-                    "oLink.Description = \"MyClipboard 剪贴板管理器\"\n" +
-                    "oLink.Save",
-                    shortcutPath,
-                    exePath,
-                    Path.GetDirectoryName(exePath)
-                );
-                
-                File.WriteAllText(vbsPath, vbsScript, Encoding.Default);
-                
-                // 执行 VBScript
-                System.Diagnostics.Process process = new System.Diagnostics.Process();
-                process.StartInfo.FileName = "wscript.exe";
-                process.StartInfo.Arguments = "\"" + vbsPath + "\"";
-                process.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
-                process.Start();
-                process.WaitForExit(3000); // 最多等待3秒
-                
-                // 清理临时文件
-                try { File.Delete(vbsPath); } catch { }
-            }
-            catch
-            {
-                // 创建快捷方式失败时静默忽略
             }
         }
 
