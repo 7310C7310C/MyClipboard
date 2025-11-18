@@ -81,7 +81,7 @@ namespace MyClipboard
         private bool isDragging = false;
         private Point dragStartPoint;
         private ImageList imageList;
-        private Panel titleBarPanel;
+        private ImageList largeImageList;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -129,6 +129,11 @@ namespace MyClipboard
             this.ShowInTaskbar = false;
             this.TopMost = true;
             
+            // 窗體拖動事件
+            this.MouseDown += Form_MouseDown;
+            this.MouseMove += Form_MouseMove;
+            this.MouseUp += Form_MouseUp;
+            
             // 添加邊框效果
             this.BackColor = Color.FromArgb(45, 45, 48);
             this.Padding = new Padding(1);
@@ -137,52 +142,37 @@ namespace MyClipboard
             Panel contentPanel = new Panel();
             contentPanel.Dock = DockStyle.Fill;
             contentPanel.BackColor = Color.FromArgb(30, 30, 30);
+            contentPanel.MouseDown += Form_MouseDown;
+            contentPanel.MouseMove += Form_MouseMove;
+            contentPanel.MouseUp += Form_MouseUp;
             this.Controls.Add(contentPanel);
-            
-            // 標題欄（用於拖動）
-            titleBarPanel = new Panel();
-            titleBarPanel.Dock = DockStyle.Top;
-            titleBarPanel.Height = 30;
-            titleBarPanel.BackColor = Color.FromArgb(45, 45, 48);
-            titleBarPanel.Cursor = Cursors.SizeAll;
-            titleBarPanel.MouseDown += TitleBar_MouseDown;
-            titleBarPanel.MouseMove += TitleBar_MouseMove;
-            titleBarPanel.MouseUp += TitleBar_MouseUp;
-            
-            Label titleLabel = new Label();
-            titleLabel.Text = "MyClipboard";
-            titleLabel.ForeColor = Color.White;
-            titleLabel.Font = new Font("Microsoft YaHei UI", 10F);
-            titleLabel.AutoSize = false;
-            titleLabel.Dock = DockStyle.Fill;
-            titleLabel.TextAlign = ContentAlignment.MiddleCenter;
-            titleLabel.MouseDown += TitleBar_MouseDown;
-            titleLabel.MouseMove += TitleBar_MouseMove;
-            titleLabel.MouseUp += TitleBar_MouseUp;
-            titleBarPanel.Controls.Add(titleLabel);
-            
-            contentPanel.Controls.Add(titleBarPanel);
 
             // ImageList for thumbnails
             imageList = new ImageList();
             imageList.ImageSize = new Size(48, 48);
             imageList.ColorDepth = ColorDepth.Depth32Bit;
+            
+            largeImageList = new ImageList();
+            largeImageList.ImageSize = new Size(48, 48);
+            largeImageList.ColorDepth = ColorDepth.Depth32Bit;
 
-            // ListView設置
+            // ListView設置 - 使用Tile模式實現左對齊
             listView = new ListView();
             listView.Dock = DockStyle.Fill;
-            listView.View = View.Details;
+            listView.View = View.Tile;
             listView.FullRowSelect = true;
-            listView.GridLines = false;
-            listView.HeaderStyle = ColumnHeaderStyle.None;
             listView.BackColor = Color.FromArgb(30, 30, 30);
             listView.ForeColor = Color.White;
             listView.BorderStyle = BorderStyle.None;
             listView.Font = new Font("Microsoft YaHei UI", 11F);
-            listView.Columns.Add("Content", 380, HorizontalAlignment.Left);
-            listView.SmallImageList = imageList;
+            listView.LargeImageList = largeImageList;
+            listView.OwnerDraw = false;
+            listView.TileSize = new Size(380, 50);
             listView.DoubleClick += ListView_DoubleClick;
             listView.MouseClick += ListView_MouseClick;
+            listView.MouseDown += Form_MouseDown;
+            listView.MouseMove += Form_MouseMove;
+            listView.MouseUp += Form_MouseUp;
             contentPanel.Controls.Add(listView);
 
             // 右鍵選單
@@ -249,25 +239,25 @@ namespace MyClipboard
             this.Hide();
         }
 
-        private void TitleBar_MouseDown(object sender, MouseEventArgs e)
+        private void Form_MouseDown(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
             {
                 isDragging = true;
-                dragStartPoint = new Point(e.X, e.Y);
+                dragStartPoint = e.Location;
             }
         }
 
-        private void TitleBar_MouseMove(object sender, MouseEventArgs e)
+        private void Form_MouseMove(object sender, MouseEventArgs e)
         {
             if (isDragging)
             {
-                Point p = this.PointToScreen(titleBarPanel.PointToClient(Control.MousePosition));
-                this.Location = new Point(p.X - dragStartPoint.X, p.Y - dragStartPoint.Y);
+                Point currentScreenPos = Control.MousePosition;
+                this.Location = new Point(currentScreenPos.X - dragStartPoint.X, currentScreenPos.Y - dragStartPoint.Y);
             }
         }
 
-        private void TitleBar_MouseUp(object sender, MouseEventArgs e)
+        private void Form_MouseUp(object sender, MouseEventArgs e)
         {
             if (isDragging)
             {
@@ -434,7 +424,7 @@ namespace MyClipboard
         private void RefreshListView()
         {
             listView.Items.Clear();
-            imageList.Images.Clear();
+            largeImageList.Images.Clear();
             
             int imageIndex = 0;
             foreach (var item in clipboardHistory)
@@ -451,12 +441,24 @@ namespace MyClipboard
                         {
                             Image img = Image.FromStream(ms);
                             Image thumbnail = CreateThumbnail(img, 48, 48);
-                            imageList.Images.Add(thumbnail);
+                            largeImageList.Images.Add(thumbnail);
                             lvi.ImageIndex = imageIndex;
                             imageIndex++;
                         }
                     }
                     catch { }
+                }
+                else
+                {
+                    // 非圖片項目也添加透明圖標以保持對齊
+                    Bitmap emptyIcon = new Bitmap(48, 48);
+                    using (Graphics g = Graphics.FromImage(emptyIcon))
+                    {
+                        g.Clear(Color.Transparent);
+                    }
+                    largeImageList.Images.Add(emptyIcon);
+                    lvi.ImageIndex = imageIndex;
+                    imageIndex++;
                 }
                 
                 listView.Items.Add(lvi);
@@ -744,6 +746,10 @@ namespace MyClipboard
                 if (imageList != null)
                 {
                     imageList.Dispose();
+                }
+                if (largeImageList != null)
+                {
+                    largeImageList.Dispose();
                 }
             }
             base.Dispose(disposing);
