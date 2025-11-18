@@ -1,131 +1,174 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using System.Runtime.Serialization.Formatters.Binary;
 
-namespace MyClipboardApp
+namespace MyClipboard
 {
-    internal static class Program
+    public class ClipboardItem
     {
-        [STAThread]
-        private static void Main()
+        public DateTime Time { get; set; }
+        public string Text { get; set; }
+        public string Format { get; set; }
+        public byte[] Data { get; set; }
+        
+        public override string ToString()
         {
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new ClipboardForm());
+            if (!string.IsNullOrEmpty(Text))
+            {
+                string preview = Text.Length > 50 ? Text.Substring(0, 50) + "..." : Text;
+                preview = preview.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ");
+                return string.Format("[{0}] {1}", Time.ToString("HH:mm:ss"), preview);
+            }
+            return string.Format("[{0}] {1}", Time.ToString("HH:mm:ss"), Format);
         }
     }
 
-    public sealed class ClipboardForm : Form
+    public class MainForm : Form
     {
-        private const int WM_CLIPBOARDUPDATE = 0x031D;
+        private NotifyIcon trayIcon;
+        private ListView listView;
+        private ContextMenuStrip listContextMenu;
+        private List<ClipboardItem> clipboardHistory = new List<ClipboardItem>();
+        private string dataPath = @"C:\ProgramData\MyClipboard\history.dat";
+        private IDataObject lastClipboardData = null;
+        private System.Windows.Forms.Timer clipboardTimer;
+
+        [DllImport("user32.dll")]
+        private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
+
+        [DllImport("user32.dll")]
+        private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+        private const int MOD_ALT = 0x0001;
+        private const int MOD_CONTROL = 0x0002;
         private const int WM_HOTKEY = 0x0312;
-        private const int HOTKEY_ID = 0xA001;
-        private const uint MOD_ALT = 0x0001;
-        private const uint MOD_CONTROL = 0x0002;
-        private const int KEYEVENTF_KEYUP = 0x0002;
+        private const int HOTKEY_ID = 1;
+        private const byte VK_X = 0x58;
+        private const uint KEYEVENTF_KEYUP = 0x0002;
 
-        private readonly NotifyIcon _trayIcon;
-        private readonly BufferedListView _recordsView;
-        private readonly ContextMenuStrip _recordMenu;
-        private readonly ContextMenuStrip _trayMenu;
-        private readonly List<ClipboardEntry> _entries = new List<ClipboardEntry>();
-        private readonly string _storageDirectory;
-        private readonly string _storageFilePath;
-        private bool _suppressNextCapture;
-
-        public ClipboardForm()
+        public MainForm()
         {
-            Text = "MyClipboard";
-            DoubleBuffered = true;
-            FormBorderStyle = FormBorderStyle.None;
-            ShowInTaskbar = false;
-            StartPosition = FormStartPosition.Manual;
-            Width = 320;
-            Height = 540;
-            TopMost = true;
-            BackColor = Color.WhiteSmoke;
-            Padding = new Padding(8);
-
-            _recordsView = new BufferedListView
-            {
-                Dock = DockStyle.Fill,
-                View = View.Details,
-                FullRowSelect = true,
-                MultiSelect = false,
-                HideSelection = false,
-                HeaderStyle = ColumnHeaderStyle.None,
-                BorderStyle = BorderStyle.None,
-                Font = new Font("Segoe UI", 10f, FontStyle.Regular),
-                BackColor = Color.White,
-                ForeColor = Color.Black,
-                Activation = ItemActivation.Standard
-            };
-            _recordsView.Columns.Add("内容", 200);
-            _recordsView.Columns.Add("格式", 60);
-            _recordsView.Columns.Add("时间", 120);
-            _recordsView.ItemActivate += (s, e) => PasteSelectedEntry();
-            _recordsView.MouseDown += RecordsViewOnMouseDown;
-            _recordsView.Resize += (s, e) => AutoSizeColumns();
-
-            Controls.Add(_recordsView);
-
-            _recordMenu = new ContextMenuStrip();
-            var copyMenuItem = _recordMenu.Items.Add("复制到剪贴板");
-            copyMenuItem.Click += (s, e) => CopySelectedEntry();
-            var deleteMenuItem = _recordMenu.Items.Add("删除该记录");
-            deleteMenuItem.Click += (s, e) => DeleteSelectedEntry();
-            _recordsView.ContextMenuStrip = _recordMenu;
-
-            _trayMenu = new ContextMenuStrip();
-            var toggleItem = _trayMenu.Items.Add("显示/隐藏");
-            toggleItem.Click += (s, e) => ToggleWindow();
-            _trayMenu.Items.Add(new ToolStripSeparator());
-            var exitItem = _trayMenu.Items.Add("退出");
-            exitItem.Click += (s, e) => Application.Exit();
-
-            _trayIcon = new NotifyIcon
-            {
-                Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath),
-                Visible = true,
-                Text = "MyClipboard",
-                ContextMenuStrip = _trayMenu
-            };
-            _trayIcon.MouseUp += TrayIconOnMouseUp;
-
-            _storageDirectory = ResolveStorageDirectory();
-            Directory.CreateDirectory(_storageDirectory);
-            _storageFilePath = Path.Combine(_storageDirectory, "records.bin");
-
-            LoadEntries();
-            RefreshListView();
-
-            Shown += (s, e) => Hide();
-            FormClosing += ClipboardForm_FormClosing;
+            InitializeComponents();
+            LoadHistory();
+            RegisterHotKey(this.Handle, HOTKEY_ID, MOD_CONTROL | MOD_ALT, VK_X);
+            
+            // 启动剪贴板监控
+            clipboardTimer = new System.Windows.Forms.Timer();
+            clipboardTimer.Interval = 500;
+            clipboardTimer.Tick += ClipboardTimer_Tick;
+            clipboardTimer.Start();
         }
 
-        private void ClipboardForm_FormClosing(object sender, FormClosingEventArgs e)
+        private void InitializeComponents()
         {
-            if (e.CloseReason == CloseReason.UserClosing)
+            // 主窗体设置
+            this.Text = "MyClipboard";
+            this.Size = new Size(400, 600);
+            this.FormBorderStyle = FormBorderStyle.None;
+            this.StartPosition = FormStartPosition.Manual;
+            this.ShowInTaskbar = false;
+            this.TopMost = true;
+            
+            // 添加边框效果
+            this.BackColor = Color.FromArgb(45, 45, 48);
+            this.Padding = new Padding(1);
+
+            // 内容面板
+            Panel contentPanel = new Panel();
+            contentPanel.Dock = DockStyle.Fill;
+            contentPanel.BackColor = Color.FromArgb(30, 30, 30);
+            this.Controls.Add(contentPanel);
+
+            // ListView设置
+            listView = new ListView();
+            listView.Dock = DockStyle.Fill;
+            listView.View = View.Details;
+            listView.FullRowSelect = true;
+            listView.GridLines = false;
+            listView.HeaderStyle = ColumnHeaderStyle.None;
+            listView.BackColor = Color.FromArgb(30, 30, 30);
+            listView.ForeColor = Color.White;
+            listView.BorderStyle = BorderStyle.None;
+            listView.Columns.Add("Content", 380);
+            listView.DoubleClick += ListView_DoubleClick;
+            listView.MouseClick += ListView_MouseClick;
+            contentPanel.Controls.Add(listView);
+
+            // 右键菜单
+            listContextMenu = new ContextMenuStrip();
+            listContextMenu.Items.Add("复制", null, CopyItem_Click);
+            listContextMenu.Items.Add("删除", null, DeleteItem_Click);
+            listView.ContextMenuStrip = listContextMenu;
+
+            // 托盘图标
+            trayIcon = new NotifyIcon();
+            trayIcon.Icon = SystemIcons.Application; // 默认图标，如果有ico文件会在后面替换
+            trayIcon.Visible = true;
+            trayIcon.Text = "MyClipboard";
+            trayIcon.MouseClick += TrayIcon_MouseClick;
+
+            // 尝试加载自定义图标
+            try
             {
-                e.Cancel = true;
-                HideForm();
+                string exePath = Application.ExecutablePath;
+                string exeDir = Path.GetDirectoryName(exePath);
+                string icoPath = Path.Combine(exeDir, "icon.ico");
+                
+                if (File.Exists(icoPath))
+                {
+                    trayIcon.Icon = new Icon(icoPath);
+                    this.Icon = new Icon(icoPath);
+                }
+                else
+                {
+                    // 从exe中提取图标
+                    this.Icon = Icon.ExtractAssociatedIcon(exePath);
+                    trayIcon.Icon = Icon.ExtractAssociatedIcon(exePath);
+                }
             }
-            else
+            catch
             {
-                SaveEntries();
-                _trayIcon.Visible = false;
+                // 使用默认图标
             }
+
+            // 窗体事件
+            this.Load += MainForm_Load;
+            this.Deactivate += MainForm_Deactivate;
         }
 
-        private void TrayIconOnMouseUp(object sender, MouseEventArgs e)
+        private void MainForm_Load(object sender, EventArgs e)
+        {
+            // 启动时隐藏窗口
+            this.Hide();
+            
+            // 设置窗口位置在屏幕右侧
+            Rectangle workingArea = Screen.PrimaryScreen.WorkingArea;
+            this.Location = new Point(workingArea.Right - this.Width - 10, workingArea.Top + 50);
+        }
+
+        private void MainForm_Deactivate(object sender, EventArgs e)
+        {
+            // 失去焦点时隐藏
+            this.Hide();
+        }
+
+        private void TrayIcon_MouseClick(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
             {
@@ -133,620 +176,379 @@ namespace MyClipboardApp
             }
         }
 
-        private static string ResolveStorageDirectory()
+        private void ToggleWindow()
         {
-            const string windowsPath = @"C:\\ProgramData\\Myclipboard";
-            var platform = Environment.OSVersion.Platform;
-            if (platform == PlatformID.Win32NT || platform == PlatformID.Win32Windows)
+            if (this.Visible)
             {
-                return windowsPath;
+                this.Hide();
             }
-
-            var fallback = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MyClipboard");
-            return fallback;
+            else
+            {
+                ShowWindow();
+            }
         }
 
-        protected override void OnHandleCreated(EventArgs e)
+        private void ShowWindow()
         {
-            base.OnHandleCreated(e);
-            AddClipboardFormatListener(Handle);
-            RegisterHotKey(Handle, HOTKEY_ID, MOD_CONTROL | MOD_ALT, (uint)Keys.X);
-        }
-
-        protected override void OnHandleDestroyed(EventArgs e)
-        {
-            RemoveClipboardFormatListener(Handle);
-            UnregisterHotKey(Handle, HOTKEY_ID);
-            base.OnHandleDestroyed(e);
+            // 更新位置到鼠标附近或屏幕右侧
+            Rectangle workingArea = Screen.PrimaryScreen.WorkingArea;
+            Point cursorPos = Cursor.Position;
+            
+            int x = Math.Min(cursorPos.X, workingArea.Right - this.Width);
+            int y = Math.Min(cursorPos.Y, workingArea.Bottom - this.Height);
+            
+            // 优先在屏幕右侧显示
+            x = workingArea.Right - this.Width - 10;
+            y = Math.Max(workingArea.Top + 50, Math.Min(y, workingArea.Bottom - this.Height));
+            
+            this.Location = new Point(x, y);
+            this.Show();
+            this.Activate();
         }
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == WM_CLIPBOARDUPDATE)
-            {
-                OnClipboardChanged();
-            }
-            else if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HOTKEY_ID)
+            if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HOTKEY_ID)
             {
                 ToggleWindow();
             }
-
             base.WndProc(ref m);
         }
 
-        private void ToggleWindow()
+        private void ClipboardTimer_Tick(object sender, EventArgs e)
         {
-            if (Visible)
-            {
-                HideForm();
-            }
-            else
-            {
-                ShowFormNearCursor();
-            }
-        }
-
-        private void HideForm()
-        {
-            Hide();
-        }
-
-        private void ShowFormNearCursor()
-        {
-            var cursor = Cursor.Position;
-            var screen = Screen.FromPoint(cursor);
-            int x = cursor.X - Width / 2;
-            int y = cursor.Y - Height - 12;
-
-            x = Math.Max(screen.WorkingArea.Left, Math.Min(x, screen.WorkingArea.Right - Width));
-            y = Math.Max(screen.WorkingArea.Top, Math.Min(y, screen.WorkingArea.Bottom - Height));
-
-            Location = new Point(x, y);
-            Show();
-            BringToFront();
-            Activate();
-        }
-
-        private void RecordsViewOnMouseDown(object sender, MouseEventArgs e)
-        {
-            if (e.Button != MouseButtons.Right) return;
-            var item = _recordsView.GetItemAt(e.X, e.Y);
-            if (item != null)
-            {
-                item.Selected = true;
-            }
-        }
-
-        private ClipboardEntry GetSelectedEntry()
-        {
-            if (_recordsView.SelectedItems.Count == 0)
-            {
-                return null;
-            }
-
-            return _recordsView.SelectedItems[0].Tag as ClipboardEntry;
-        }
-
-        private void PasteSelectedEntry()
-        {
-            var entry = GetSelectedEntry();
-            if (entry == null)
-            {
-                return;
-            }
-
-            HideForm();
-            var timer = new Timer { Interval = 120 };
-            timer.Tick += (s, e) =>
-            {
-                timer.Stop();
-                timer.Dispose();
-                ApplyEntryToClipboard(entry, true);
-            };
-            timer.Start();
-        }
-
-        private void CopySelectedEntry()
-        {
-            var entry = GetSelectedEntry();
-            if (entry == null)
-            {
-                return;
-            }
-
-            ApplyEntryToClipboard(entry, false);
-        }
-
-        private void DeleteSelectedEntry()
-        {
-            var entry = GetSelectedEntry();
-            if (entry == null)
-            {
-                return;
-            }
-
-            _entries.Remove(entry);
-            RefreshListView();
-            SaveEntries();
-        }
-
-        private void ApplyEntryToClipboard(ClipboardEntry entry, bool simulatePaste)
-        {
-            if (entry == null || entry.Formats == null || entry.Formats.Count == 0)
-            {
-                return;
-            }
-
-            var dataObject = new DataObject();
-            foreach (var payload in entry.Formats)
-            {
-                var data = payload.ToObject();
-                if (data != null)
-                {
-                    dataObject.SetData(payload.Format, data);
-                }
-            }
-
-            if (dataObject.GetFormats().Length == 0)
-            {
-                return;
-            }
-
-            ExecuteWithRetry(() =>
-            {
-                _suppressNextCapture = true;
-                Clipboard.SetDataObject(dataObject, true);
-            });
-
-            if (simulatePaste)
-            {
-                var pasteTimer = new Timer { Interval = 60 };
-                pasteTimer.Tick += (s, e) =>
-                {
-                    pasteTimer.Stop();
-                    pasteTimer.Dispose();
-                    SendPasteKeystroke();
-                };
-                pasteTimer.Start();
-            }
-        }
-
-        private void SendPasteKeystroke()
-        {
-            keybd_event((byte)Keys.ControlKey, 0, 0, 0);
-            keybd_event((byte)Keys.V, 0, 0, 0);
-            keybd_event((byte)Keys.V, 0, KEYEVENTF_KEYUP, 0);
-            keybd_event((byte)Keys.ControlKey, 0, KEYEVENTF_KEYUP, 0);
-        }
-
-        private void OnClipboardChanged()
-        {
-            if (_suppressNextCapture)
-            {
-                _suppressNextCapture = false;
-                return;
-            }
-
-            var dataObject = TryGetClipboardData();
-            if (dataObject == null)
-            {
-                return;
-            }
-
-            var formats = dataObject.GetFormats(false);
-            if (formats == null || formats.Length == 0)
-            {
-                return;
-            }
-
-            var payloads = new List<ClipboardFormatPayload>();
-            foreach (var format in formats.Distinct())
-            {
-                try
-                {
-                    var data = dataObject.GetData(format, false) ?? dataObject.GetData(format, true);
-                    var payload = ClipboardFormatPayload.FromData(format, data);
-                    if (payload != null)
-                    {
-                        payloads.Add(payload);
-                    }
-                }
-                catch
-                {
-                    // Ignore formats that cannot be captured.
-                }
-            }
-
-            if (payloads.Count == 0)
-            {
-                return;
-            }
-
-            var entry = new ClipboardEntry
-            {
-                Id = Guid.NewGuid(),
-                Timestamp = DateTime.Now,
-                Formats = payloads,
-                Preview = ClipboardEntry.BuildPreview(payloads)
-            };
-
-            if (_entries.Count > 0 && ClipboardEntry.AreEquivalent(_entries[0], entry))
-            {
-                return;
-            }
-
-            _entries.Insert(0, entry);
-            RefreshListView();
-            SaveEntries();
-        }
-
-        private IDataObject TryGetClipboardData()
-        {
-            for (var i = 0; i < 4; i++)
-            {
-                try
-                {
-                    return Clipboard.GetDataObject();
-                }
-                catch (ExternalException)
-                {
-                    Thread.Sleep(40);
-                }
-            }
-
-            return null;
-        }
-
-        private void ExecuteWithRetry(Action action)
-        {
-            for (var i = 0; i < 4; i++)
-            {
-                try
-                {
-                    action();
-                    return;
-                }
-                catch (ExternalException)
-                {
-                    Thread.Sleep(40);
-                }
-            }
-        }
-
-        private void AutoSizeColumns()
-        {
-            if (_recordsView.Columns.Count < 3)
-            {
-                return;
-            }
-
-            int width = _recordsView.ClientSize.Width;
-            _recordsView.Columns[0].Width = (int)(width * 0.55);
-            _recordsView.Columns[1].Width = (int)(width * 0.15);
-            _recordsView.Columns[2].Width = width - _recordsView.Columns[0].Width - _recordsView.Columns[1].Width;
-        }
-
-        private void LoadEntries()
-        {
-            if (!File.Exists(_storageFilePath))
-            {
-                return;
-            }
-
             try
             {
-                using (var fs = File.OpenRead(_storageFilePath))
+                if (Clipboard.ContainsData(DataFormats.Text) || 
+                    Clipboard.ContainsData(DataFormats.UnicodeText) ||
+                    Clipboard.ContainsData(DataFormats.Rtf) ||
+                    Clipboard.ContainsData(DataFormats.Html) ||
+                    Clipboard.ContainsImage())
                 {
-                    var formatter = new BinaryFormatter();
-                    if (formatter.Deserialize(fs) is List<ClipboardEntry> stored)
+                    IDataObject currentData = Clipboard.GetDataObject();
+                    
+                    if (IsNewClipboardData(currentData))
                     {
-                        _entries.Clear();
-                        _entries.AddRange(stored.OrderByDescending(e => e.Timestamp));
+                        lastClipboardData = currentData;
+                        AddClipboardItem(currentData);
                     }
                 }
             }
             catch
             {
-                _entries.Clear();
+                // 剪贴板访问失败时忽略
             }
         }
 
-        private void SaveEntries()
+        private bool IsNewClipboardData(IDataObject newData)
         {
-            try
+            if (lastClipboardData == null)
+                return true;
+
+            // 比较文本内容
+            if (newData.GetDataPresent(DataFormats.UnicodeText) && 
+                lastClipboardData.GetDataPresent(DataFormats.UnicodeText))
             {
-                using (var fs = File.Open(_storageFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
-                {
-                    var formatter = new BinaryFormatter();
-                    formatter.Serialize(fs, _entries);
-                }
-            }
-            catch
-            {
-                // Ignore persistence errors to avoid crashing the app.
-            }
-        }
-
-        private void RefreshListView()
-        {
-            _recordsView.BeginUpdate();
-            _recordsView.Items.Clear();
-
-            foreach (var entry in _entries)
-            {
-                var item = new ListViewItem(entry.Preview ?? "");
-                item.SubItems.Add(entry.Formats?.Count.ToString() ?? "0");
-                item.SubItems.Add(entry.Timestamp.ToString("yyyy-MM-dd HH:mm:ss"));
-                item.Tag = entry;
-                _recordsView.Items.Add(item);
-            }
-
-            _recordsView.EndUpdate();
-            AutoSizeColumns();
-        }
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool AddClipboardFormatListener(IntPtr hwnd);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-
-        [DllImport("user32.dll")]
-        private static extern void keybd_event(byte bVk, byte bScan, int dwFlags, int dwExtraInfo);
-    }
-
-    [Serializable]
-    public sealed class ClipboardEntry
-    {
-        private static readonly byte[] EmptyBytes = new byte[0];
-
-        public Guid Id { get; set; }
-        public DateTime Timestamp { get; set; }
-        public string Preview { get; set; }
-        public List<ClipboardFormatPayload> Formats { get; set; }
-
-        public ClipboardEntry()
-        {
-            Formats = new List<ClipboardFormatPayload>();
-        }
-
-        public static string BuildPreview(IEnumerable<ClipboardFormatPayload> payloads)
-        {
-            if (payloads == null)
-            {
-                return string.Empty;
-            }
-
-            var textPayload = payloads.FirstOrDefault(p => p.PayloadType == ClipboardPayloadType.Text);
-            if (textPayload != null)
-            {
-                var text = textPayload.Data != null ? Encoding.Unicode.GetString(textPayload.Data) : string.Empty;
-                text = NormalizePreview(text);
-                if (!string.IsNullOrEmpty(text))
-                {
-                    return text;
-                }
-            }
-
-            var first = payloads.FirstOrDefault();
-            return first != null ? first.Format : "Clipboard Data";
-        }
-
-        private static string NormalizePreview(string text)
-        {
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                return string.Empty;
-            }
-
-            var flattened = text.Replace('\r', ' ').Replace('\n', ' ').Trim();
-            if (flattened.Length > 120)
-            {
-                flattened = flattened.Substring(0, 120) + "…";
-            }
-
-            return flattened;
-        }
-
-        public static bool AreEquivalent(ClipboardEntry a, ClipboardEntry b)
-        {
-            if (a == null || b == null)
-            {
-                return false;
-            }
-
-            if (a.Formats.Count != b.Formats.Count)
-            {
-                return false;
-            }
-
-            for (int i = 0; i < a.Formats.Count; i++)
-            {
-                var left = a.Formats[i];
-                var right = b.Formats[i];
-                if (!string.Equals(left.Format, right.Format, StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-
-                if (left.PayloadType != right.PayloadType)
-                {
-                    return false;
-                }
-
-                var leftBytes = left.Data ?? EmptyBytes;
-                var rightBytes = right.Data ?? EmptyBytes;
-                if (!leftBytes.SequenceEqual(rightBytes))
-                {
-                    return false;
-                }
+                string newText = newData.GetData(DataFormats.UnicodeText) as string;
+                string lastText = lastClipboardData.GetData(DataFormats.UnicodeText) as string;
+                return newText != lastText;
             }
 
             return true;
         }
-    }
 
-    public enum ClipboardPayloadType
-    {
-        Text,
-        Binary,
-        Image,
-        Serialized
-    }
-
-    [Serializable]
-    public sealed class ClipboardFormatPayload
-    {
-        public string Format { get; set; }
-        public ClipboardPayloadType PayloadType { get; set; }
-        public byte[] Data { get; set; }
-
-        public static ClipboardFormatPayload FromData(string format, object data)
+        private void AddClipboardItem(IDataObject data)
         {
-            if (string.IsNullOrWhiteSpace(format) || data == null)
-            {
-                return null;
-            }
+            ClipboardItem item = new ClipboardItem();
+            item.Time = DateTime.Now;
 
-            if (data is string str)
+            // 优先处理文本
+            if (data.GetDataPresent(DataFormats.UnicodeText))
             {
-                return new ClipboardFormatPayload
-                {
-                    Format = format,
-                    PayloadType = ClipboardPayloadType.Text,
-                    Data = Encoding.Unicode.GetBytes(str)
-                };
+                item.Text = data.GetData(DataFormats.UnicodeText) as string;
+                item.Format = "Text";
             }
-
-            if (data is string[] lines)
+            else if (data.GetDataPresent(DataFormats.Text))
             {
-                var joined = string.Join(Environment.NewLine, lines);
-                return new ClipboardFormatPayload
-                {
-                    Format = format,
-                    PayloadType = ClipboardPayloadType.Text,
-                    Data = Encoding.Unicode.GetBytes(joined)
-                };
+                item.Text = data.GetData(DataFormats.Text) as string;
+                item.Format = "Text";
             }
-
-            if (data is Bitmap bitmap)
+            else if (data.GetDataPresent(DataFormats.Rtf))
             {
-                using (var ms = new MemoryStream())
+                string rtf = data.GetData(DataFormats.Rtf) as string;
+                item.Data = Encoding.UTF8.GetBytes(rtf);
+                item.Format = "RTF";
+                item.Text = "富文本内容";
+            }
+            else if (data.GetDataPresent(DataFormats.Html))
+            {
+                string html = data.GetData(DataFormats.Html) as string;
+                item.Data = Encoding.UTF8.GetBytes(html);
+                item.Format = "HTML";
+                item.Text = "HTML内容";
+            }
+            else if (Clipboard.ContainsImage())
+            {
+                using (MemoryStream ms = new MemoryStream())
                 {
-                    bitmap.Save(ms, ImageFormat.Png);
-                    return new ClipboardFormatPayload
-                    {
-                        Format = format,
-                        PayloadType = ClipboardPayloadType.Image,
-                        Data = ms.ToArray()
-                    };
+                    Image img = Clipboard.GetImage();
+                    img.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                    item.Data = ms.ToArray();
                 }
+                item.Format = "Image";
+                item.Text = "图片";
             }
-
-            if (data is Image image)
+            else
             {
-                using (var ms = new MemoryStream())
-                {
-                    image.Save(ms, ImageFormat.Png);
-                    return new ClipboardFormatPayload
-                    {
-                        Format = format,
-                        PayloadType = ClipboardPayloadType.Image,
-                        Data = ms.ToArray()
-                    };
-                }
+                return; // 不支持的格式
             }
 
-            if (data is MemoryStream memoryStream)
+            // 避免重复
+            if (clipboardHistory.Count > 0)
             {
-                return new ClipboardFormatPayload
-                {
-                    Format = format,
-                    PayloadType = ClipboardPayloadType.Binary,
-                    Data = memoryStream.ToArray()
-                };
+                var last = clipboardHistory[0];
+                if (last.Text == item.Text && last.Format == item.Format)
+                    return;
             }
 
-            if (data is byte[] bytes)
+            clipboardHistory.Insert(0, item);
+            RefreshListView();
+            SaveHistory();
+        }
+
+        private void RefreshListView()
+        {
+            listView.Items.Clear();
+            foreach (var item in clipboardHistory)
             {
-                return new ClipboardFormatPayload
-                {
-                    Format = format,
-                    PayloadType = ClipboardPayloadType.Binary,
-                    Data = bytes.ToArray()
-                };
+                ListViewItem lvi = new ListViewItem(item.ToString());
+                lvi.Tag = item;
+                listView.Items.Add(lvi);
             }
+        }
 
+        private void ListView_DoubleClick(object sender, EventArgs e)
+        {
+            if (listView.SelectedItems.Count > 0)
+            {
+                ClipboardItem item = listView.SelectedItems[0].Tag as ClipboardItem;
+                PasteItem(item);
+            }
+        }
+
+        private void PasteItem(ClipboardItem item)
+        {
             try
             {
-                using (var ms = new MemoryStream())
+                // 设置剪贴板内容
+                if (item.Format == "Text")
                 {
-                    var formatter = new BinaryFormatter();
-                    formatter.Serialize(ms, data);
-                    return new ClipboardFormatPayload
+                    Clipboard.SetText(item.Text);
+                }
+                else if (item.Format == "RTF")
+                {
+                    string rtf = Encoding.UTF8.GetString(item.Data);
+                    Clipboard.SetData(DataFormats.Rtf, rtf);
+                }
+                else if (item.Format == "HTML")
+                {
+                    string html = Encoding.UTF8.GetString(item.Data);
+                    Clipboard.SetData(DataFormats.Html, html);
+                }
+                else if (item.Format == "Image")
+                {
+                    using (MemoryStream ms = new MemoryStream(item.Data))
                     {
-                        Format = format,
-                        PayloadType = ClipboardPayloadType.Serialized,
-                        Data = ms.ToArray()
-                    };
+                        Image img = Image.FromStream(ms);
+                        Clipboard.SetImage(img);
+                    }
+                }
+
+                // 隐藏窗口
+                this.Hide();
+
+                // 等待一下让窗口完全隐藏
+                Thread.Sleep(100);
+
+                // 模拟 Ctrl+V 粘贴
+                keybd_event(0x11, 0, 0, UIntPtr.Zero); // Ctrl down
+                keybd_event(0x56, 0, 0, UIntPtr.Zero); // V down
+                keybd_event(0x56, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); // V up
+                keybd_event(0x11, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); // Ctrl up
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("粘贴失败: " + ex.Message, "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ListView_MouseClick(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Right)
+            {
+                if (listView.SelectedItems.Count > 0)
+                {
+                    listContextMenu.Show(listView, e.Location);
+                }
+            }
+        }
+
+        private void CopyItem_Click(object sender, EventArgs e)
+        {
+            if (listView.SelectedItems.Count > 0)
+            {
+                ClipboardItem item = listView.SelectedItems[0].Tag as ClipboardItem;
+                try
+                {
+                    if (item.Format == "Text")
+                    {
+                        Clipboard.SetText(item.Text);
+                    }
+                    else if (item.Format == "RTF")
+                    {
+                        string rtf = Encoding.UTF8.GetString(item.Data);
+                        Clipboard.SetData(DataFormats.Rtf, rtf);
+                    }
+                    else if (item.Format == "HTML")
+                    {
+                        string html = Encoding.UTF8.GetString(item.Data);
+                        Clipboard.SetData(DataFormats.Html, html);
+                    }
+                    else if (item.Format == "Image")
+                    {
+                        using (MemoryStream ms = new MemoryStream(item.Data))
+                        {
+                            Image img = Image.FromStream(ms);
+                            Clipboard.SetImage(img);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("复制失败: " + ex.Message, "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void DeleteItem_Click(object sender, EventArgs e)
+        {
+            if (listView.SelectedItems.Count > 0)
+            {
+                ClipboardItem item = listView.SelectedItems[0].Tag as ClipboardItem;
+                clipboardHistory.Remove(item);
+                RefreshListView();
+                SaveHistory();
+            }
+        }
+
+        private void SaveHistory()
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(dataPath);
+                if (!Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+
+                using (FileStream fs = new FileStream(dataPath, FileMode.Create))
+                using (BinaryWriter writer = new BinaryWriter(fs))
+                {
+                    writer.Write(clipboardHistory.Count);
+                    foreach (var item in clipboardHistory)
+                    {
+                        writer.Write(item.Time.ToBinary());
+                        writer.Write(item.Format ?? "");
+                        writer.Write(item.Text ?? "");
+                        
+                        if (item.Data != null)
+                        {
+                            writer.Write(item.Data.Length);
+                            writer.Write(item.Data);
+                        }
+                        else
+                        {
+                            writer.Write(0);
+                        }
+                    }
                 }
             }
             catch
             {
-                return null;
+                // 保存失败时忽略
             }
         }
 
-        public object ToObject()
+        private void LoadHistory()
         {
-            if (Data == null || Data.Length == 0)
+            try
             {
-                return null;
-            }
+                if (!File.Exists(dataPath))
+                    return;
 
-            switch (PayloadType)
-            {
-                case ClipboardPayloadType.Text:
-                    return Encoding.Unicode.GetString(Data);
-                case ClipboardPayloadType.Image:
-                    using (var ms = new MemoryStream(Data))
-                    using (var image = Image.FromStream(ms))
+                using (FileStream fs = new FileStream(dataPath, FileMode.Open))
+                using (BinaryReader reader = new BinaryReader(fs))
+                {
+                    int count = reader.ReadInt32();
+                    for (int i = 0; i < count; i++)
                     {
-                        return (Image)image.Clone();
-                    }
-                case ClipboardPayloadType.Binary:
-                    return new MemoryStream(Data, writable: false);
-                case ClipboardPayloadType.Serialized:
-                    try
-                    {
-                        using (var ms = new MemoryStream(Data))
+                        ClipboardItem item = new ClipboardItem();
+                        item.Time = DateTime.FromBinary(reader.ReadInt64());
+                        item.Format = reader.ReadString();
+                        item.Text = reader.ReadString();
+                        
+                        int dataLength = reader.ReadInt32();
+                        if (dataLength > 0)
                         {
-                            var formatter = new BinaryFormatter();
-                            return formatter.Deserialize(ms);
+                            item.Data = reader.ReadBytes(dataLength);
                         }
+                        
+                        clipboardHistory.Add(item);
                     }
-                    catch
-                    {
-                        return null;
-                    }
-                default:
-                    return null;
+                }
+
+                RefreshListView();
             }
+            catch
+            {
+                // 加载失败时忽略
+            }
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            SaveHistory();
+            UnregisterHotKey(this.Handle, HOTKEY_ID);
+            trayIcon.Visible = false;
+            clipboardTimer.Stop();
+            base.OnFormClosing(e);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (trayIcon != null)
+                {
+                    trayIcon.Dispose();
+                }
+                if (clipboardTimer != null)
+                {
+                    clipboardTimer.Dispose();
+                }
+            }
+            base.Dispose(disposing);
         }
     }
 
-    internal sealed class BufferedListView : ListView
+    static class Program
     {
-        public BufferedListView()
+        [STAThread]
+        static void Main()
         {
-            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
-            UpdateStyles();
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new MainForm());
         }
     }
 }
