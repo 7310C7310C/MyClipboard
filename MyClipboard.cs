@@ -69,7 +69,6 @@ namespace MyClipboard
     public class MainForm : Form
     {
         private NotifyIcon trayIcon;
-        private ListView listView;
         private ContextMenuStrip listContextMenu;
         private List<ClipboardItem> clipboardHistory = new List<ClipboardItem>();
         private string dataPath = @"C:\ProgramData\MyClipboard\history.dat";
@@ -83,10 +82,12 @@ namespace MyClipboard
         private Color bgColor1, bgColor2, textColor, borderColor;
         private int scrollOffset = 0;
         private Panel listPanel;
-        private VScrollBar vScrollBar;
-        private const int MIN_ITEM_HEIGHT = 60;
-        private const int MAX_TEXT_LINES = 4;
-        private List<int> itemHeights = new List<int>();
+        private Panel scrollBarPanel;
+        private System.Windows.Forms.Timer scrollBarTimer;
+        private bool showScrollBar = false;
+        private Button minimizeButton;
+        private const int ITEM_HEIGHT = 60;
+        private bool firstRun = true;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -124,6 +125,9 @@ namespace MyClipboard
             
             // 初始化時捕獲當前剪貼板內容
             CaptureCurrentClipboard();
+            
+            // 首次運行提示
+            ShowFirstRunTip();
         }
 
         private void InitializeComponents()
@@ -171,7 +175,37 @@ namespace MyClipboard
             listPanel.MouseClick += ListPanel_MouseClick;
             listPanel.MouseDoubleClick += ListPanel_MouseDoubleClick;
             listPanel.MouseWheel += ListPanel_MouseWheel;
+            listPanel.MouseEnter += ListPanel_MouseEnter;
+            listPanel.MouseLeave += ListPanel_MouseLeave;
             contentPanel.Controls.Add(listPanel);
+            
+            // Material Design 滚动条
+            scrollBarPanel = new Panel();
+            scrollBarPanel.Width = 8;
+            scrollBarPanel.BackColor = Color.FromArgb(100, 100, 100);
+            scrollBarPanel.Visible = false;
+            scrollBarPanel.Anchor = AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
+            contentPanel.Controls.Add(scrollBarPanel);
+            scrollBarPanel.BringToFront();
+            
+            scrollBarTimer = new System.Windows.Forms.Timer();
+            scrollBarTimer.Interval = 1000;
+            scrollBarTimer.Tick += ScrollBarTimer_Tick;
+            
+            // 最小化按钮
+            minimizeButton = new Button();
+            minimizeButton.Text = "—";
+            minimizeButton.Size = new Size(30, 30);
+            minimizeButton.Location = new Point(this.ClientSize.Width - 35, 5);
+            minimizeButton.FlatStyle = FlatStyle.Flat;
+            minimizeButton.FlatAppearance.BorderSize = 0;
+            minimizeButton.BackColor = Color.FromArgb(60, 60, 60);
+            minimizeButton.ForeColor = Color.White;
+            minimizeButton.Font = new Font("Arial", 12F, FontStyle.Bold);
+            minimizeButton.Cursor = Cursors.Hand;
+            minimizeButton.Click += MinimizeButton_Click;
+            contentPanel.Controls.Add(minimizeButton);
+            minimizeButton.BringToFront();
 
             // 右鍵選單
             listContextMenu = new ContextMenuStrip();
@@ -185,7 +219,7 @@ namespace MyClipboard
             trayIcon.Icon = SystemIcons.Application;
             trayIcon.Visible = true;
             trayIcon.Text = "MyClipboard";
-            trayIcon.MouseClick += TrayIcon_MouseClick;
+            trayIcon.MouseDoubleClick += TrayIcon_MouseDoubleClick;
             
             // 托盤右鍵選單
             ContextMenuStrip trayMenu = new ContextMenuStrip();
@@ -248,27 +282,21 @@ namespace MyClipboard
 
             int y = -scrollOffset;
             int panelWidth = listPanel.ClientSize.Width;
+            int startIndex = Math.Max(0, scrollOffset / ITEM_HEIGHT);
+            int visibleCount = (listPanel.ClientSize.Height / ITEM_HEIGHT) + 2;
             
-            for (int i = 0; i < clipboardHistory.Count; i++)
+            for (int i = startIndex; i < Math.Min(startIndex + visibleCount, clipboardHistory.Count); i++)
             {
-                if (i >= itemHeights.Count)
-                    break;
-                    
-                int itemHeight = itemHeights[i];
+                int itemY = i * ITEM_HEIGHT - scrollOffset;
                 
                 // 只繪製可見的項目
-                if (y + itemHeight < 0)
-                {
-                    y += itemHeight;
+                if (itemY + ITEM_HEIGHT < 0 || itemY > listPanel.ClientSize.Height)
                     continue;
-                }
-                if (y > listPanel.ClientSize.Height)
-                    break;
 
                 ClipboardItem item = clipboardHistory[i];
-                Rectangle itemRect = new Rectangle(0, y, panelWidth, itemHeight);
+                Rectangle itemRect = new Rectangle(0, itemY, panelWidth, ITEM_HEIGHT);
                 
-                // 隴行換色
+                // 隴行換色（增強對比）
                 Color itemBgColor = (i % 2 == 0) ? bgColor1 : bgColor2;
                 using (SolidBrush bgBrush = new SolidBrush(itemBgColor))
                 {
@@ -286,7 +314,7 @@ namespace MyClipboard
                         {
                             Image thumbnail = imageList.Images[imageIndex];
                             int imgX = panelWidth - 53;
-                            int imgY = y + (itemHeight - 48) / 2;
+                            int imgY = itemY + (ITEM_HEIGHT - 48) / 2;
                             e.Graphics.DrawImage(thumbnail, imgX, imgY, 48, 48);
                             textWidth = panelWidth - 65;
                         }
@@ -295,12 +323,13 @@ namespace MyClipboard
                 }
 
                 // 給製文字（左對齊）
-                Rectangle textRect = new Rectangle(5, y + 5, textWidth, itemHeight - 10);
+                Rectangle textRect = new Rectangle(5, itemY + 5, textWidth, ITEM_HEIGHT - 10);
                 TextRenderer.DrawText(e.Graphics, item.ToString(), listPanel.Font, textRect, 
-                    textColor, TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.WordBreak);
-
-                y += itemHeight;
+                    textColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             }
+            
+            // 更新滚动条
+            UpdateScrollBar();
         }
 
         private void ListPanel_MouseDown(object sender, MouseEventArgs e)
@@ -346,29 +375,78 @@ namespace MyClipboard
             int delta = e.Delta / 120;
             scrollOffset -= delta * 30;
             
-            int totalHeight = 0;
-            for (int i = 0; i < itemHeights.Count; i++)
-            {
-                totalHeight += itemHeights[i];
-            }
-            
+            int totalHeight = clipboardHistory.Count * ITEM_HEIGHT;
             int maxScroll = Math.Max(0, totalHeight - listPanel.ClientSize.Height);
             scrollOffset = Math.Max(0, Math.Min(scrollOffset, maxScroll));
             
+            ShowScrollBarTemporarily();
             listPanel.Invalidate();
+        }
+
+        private void ListPanel_MouseEnter(object sender, EventArgs e)
+        {
+            Point pos = listPanel.PointToClient(Control.MousePosition);
+            if (pos.X > listPanel.Width - 20)
+            {
+                ShowScrollBarTemporarily();
+            }
+        }
+
+        private void ListPanel_MouseLeave(object sender, EventArgs e)
+        {
+            // 滚动条将由计时器自动隐藏
+        }
+
+        private void ShowScrollBarTemporarily()
+        {
+            int totalHeight = clipboardHistory.Count * ITEM_HEIGHT;
+            if (totalHeight <= listPanel.ClientSize.Height)
+            {
+                scrollBarPanel.Visible = false;
+                return;
+            }
+
+            showScrollBar = true;
+            scrollBarPanel.Visible = true;
+            scrollBarTimer.Stop();
+            scrollBarTimer.Start();
+        }
+
+        private void ScrollBarTimer_Tick(object sender, EventArgs e)
+        {
+            scrollBarTimer.Stop();
+            scrollBarPanel.Visible = false;
+            showScrollBar = false;
+        }
+
+        private void UpdateScrollBar()
+        {
+            if (!showScrollBar || clipboardHistory.Count == 0)
+                return;
+
+            int totalHeight = clipboardHistory.Count * ITEM_HEIGHT;
+            if (totalHeight <= listPanel.ClientSize.Height)
+                return;
+
+            int scrollBarHeight = Math.Max(30, (listPanel.ClientSize.Height * listPanel.ClientSize.Height) / totalHeight);
+            int scrollBarY = (scrollOffset * listPanel.ClientSize.Height) / totalHeight;
+
+            scrollBarPanel.Height = scrollBarHeight;
+            scrollBarPanel.Top = scrollBarY;
+            scrollBarPanel.Left = listPanel.Right - 10;
+        }
+
+        private void MinimizeButton_Click(object sender, EventArgs e)
+        {
+            this.Hide();
         }
 
         private int GetItemIndexAtPoint(Point point)
         {
-            int y = -scrollOffset;
-            for (int i = 0; i < clipboardHistory.Count && i < itemHeights.Count; i++)
+            int itemIndex = (scrollOffset + point.Y) / ITEM_HEIGHT;
+            if (itemIndex >= 0 && itemIndex < clipboardHistory.Count)
             {
-                int itemHeight = itemHeights[i];
-                if (point.Y >= y && point.Y < y + itemHeight)
-                {
-                    return i;
-                }
-                y += itemHeight;
+                return itemIndex;
             }
             return -1;
         }
@@ -384,27 +462,6 @@ namespace MyClipboard
                 }
             }
             return imageIndex;
-        }
-
-        private int CalculateItemHeight(ClipboardItem item)
-        {
-            if (item.Format == "Image")
-            {
-                return MIN_ITEM_HEIGHT;
-            }
-
-            if (string.IsNullOrEmpty(item.Text))
-            {
-                return MIN_ITEM_HEIGHT;
-            }
-
-            // 計算文字需要的行數
-            string[] lines = item.Text.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.None);
-            int displayLines = Math.Min(lines.Length, MAX_TEXT_LINES);
-            
-            // 每行大約20px，再加上上下邊距
-            int textHeight = displayLines * 22 + 16;
-            return Math.Max(MIN_ITEM_HEIGHT, textHeight);
         }
 
         private void Form_MouseDown(object sender, MouseEventArgs e)
@@ -434,7 +491,7 @@ namespace MyClipboard
             }
         }
 
-        private void TrayIcon_MouseClick(object sender, MouseEventArgs e)
+        private void TrayIcon_MouseDoubleClick(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
             {
@@ -584,14 +641,11 @@ namespace MyClipboard
 
         private void RefreshListView()
         {
-            // 重新計算所有項目高度
-            itemHeights.Clear();
+            // 重新加載圖片
             imageList.Images.Clear();
             
             foreach (var item in clipboardHistory)
             {
-                itemHeights.Add(CalculateItemHeight(item));
-                
                 // 為圖片添加縮略圖
                 if (item.Format == "Image" && item.Data != null)
                 {
@@ -660,10 +714,10 @@ namespace MyClipboard
                     }
                 }
 
-                // 隐藏窗口
+                // 粘贴后隱藏界面
                 this.Hide();
 
-                // 等待一下让窗口完全隐藏
+                // 等待一下讓窗口完全隱藏
                 Thread.Sleep(100);
 
                 // 模拟 Ctrl+V 粘贴
@@ -763,6 +817,7 @@ namespace MyClipboard
                     writer.Write(this.Location.X);
                     writer.Write(this.Location.Y);
                     writer.Write(isDarkTheme);
+                    writer.Write(firstRun);
                 }
             }
             catch { }
@@ -790,6 +845,11 @@ namespace MyClipboard
                         {
                             isDarkTheme = reader.ReadBoolean();
                         }
+                        
+                        if (fs.Position < fs.Length)
+                        {
+                            firstRun = reader.ReadBoolean();
+                        }
                         return;
                     }
                 }
@@ -799,14 +859,37 @@ namespace MyClipboard
             // 如果沒有保存的設置，默認居中和深色主題
             this.StartPosition = FormStartPosition.CenterScreen;
             isDarkTheme = true;
+            firstRun = true;
+        }
+
+        private void ShowFirstRunTip()
+        {
+            if (!firstRun)
+                return;
+
+            DialogResult result = MessageBox.Show(
+                "歡迎使用 MyClipboard！\n\n" +
+                "快捷鍵：Ctrl + Alt + X 顯示/隱藏界面\n" +
+                "雙擊記錄可直接貼上\n" +
+                "雙擊托盤圖示顯示/隱藏界面\n\n" +
+                "不再顯示此提示？",
+                "快捷鍵提示",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Information);
+
+            if (result == DialogResult.Yes)
+            {
+                firstRun = false;
+                SaveSettings();
+            }
         }
 
         private void ApplyTheme()
         {
             if (isDarkTheme)
             {
-                bgColor1 = Color.FromArgb(37, 37, 38);
-                bgColor2 = Color.FromArgb(45, 45, 48);
+                bgColor1 = Color.FromArgb(30, 30, 32);
+                bgColor2 = Color.FromArgb(50, 50, 52);
                 textColor = Color.White;
                 borderColor = Color.FromArgb(63, 63, 70);
                 this.BackColor = Color.FromArgb(63, 63, 70);
@@ -815,10 +898,15 @@ namespace MyClipboard
                     listPanel.BackColor = Color.FromArgb(30, 30, 30);
                     listPanel.ForeColor = Color.White;
                 }
+                if (minimizeButton != null)
+                {
+                    minimizeButton.BackColor = Color.FromArgb(60, 60, 60);
+                    minimizeButton.ForeColor = Color.White;
+                }
             }
             else
             {
-                bgColor1 = Color.FromArgb(245, 245, 245);
+                bgColor1 = Color.FromArgb(240, 240, 240);
                 bgColor2 = Color.FromArgb(255, 255, 255);
                 textColor = Color.Black;
                 borderColor = Color.FromArgb(180, 180, 180);
@@ -827,6 +915,11 @@ namespace MyClipboard
                 {
                     listPanel.BackColor = Color.FromArgb(250, 250, 250);
                     listPanel.ForeColor = Color.Black;
+                }
+                if (minimizeButton != null)
+                {
+                    minimizeButton.BackColor = Color.FromArgb(220, 220, 220);
+                    minimizeButton.ForeColor = Color.Black;
                 }
             }
             
@@ -940,6 +1033,10 @@ namespace MyClipboard
                 if (imageList != null)
                 {
                     imageList.Dispose();
+                }
+                if (scrollBarTimer != null)
+                {
+                    scrollBarTimer.Dispose();
                 }
             }
             base.Dispose(disposing);
