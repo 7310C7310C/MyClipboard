@@ -82,6 +82,8 @@ namespace MyClipboard
         private Point dragStartPoint;
         private ImageList imageList;
         private ImageList largeImageList;
+        private bool isDarkTheme = true;
+        private Color bgColor1, bgColor2, textColor, borderColor;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -109,6 +111,8 @@ namespace MyClipboard
         {
             InitializeComponents();
             LoadHistory();
+            LoadSettings();
+            ApplyTheme();
             RegisterHotKey(this.Handle, HOTKEY_ID, MOD_CONTROL | MOD_ALT, VK_X);
             
             // 啟動剪貼板監控
@@ -156,18 +160,20 @@ namespace MyClipboard
             largeImageList.ImageSize = new Size(48, 48);
             largeImageList.ColorDepth = ColorDepth.Depth32Bit;
 
-            // ListView設置 - 使用Tile模式實現左對齊
+            // ListView設置 - 使用OwnerDraw自繪
             listView = new ListView();
             listView.Dock = DockStyle.Fill;
-            listView.View = View.Tile;
+            listView.View = View.Details;
             listView.FullRowSelect = true;
             listView.BackColor = Color.FromArgb(30, 30, 30);
             listView.ForeColor = Color.White;
             listView.BorderStyle = BorderStyle.None;
             listView.Font = new Font("Microsoft YaHei UI", 11F);
-            listView.LargeImageList = largeImageList;
-            listView.OwnerDraw = false;
-            listView.TileSize = new Size(380, 50);
+            listView.HeaderStyle = ColumnHeaderStyle.None;
+            listView.Columns.Add("", 380);
+            listView.OwnerDraw = true;
+            listView.DrawItem += ListView_DrawItem;
+            listView.Scrollable = false;
             listView.DoubleClick += ListView_DoubleClick;
             listView.MouseClick += ListView_MouseClick;
             listView.MouseDown += Form_MouseDown;
@@ -183,13 +189,23 @@ namespace MyClipboard
 
             // 托盤圖示
             trayIcon = new NotifyIcon();
-            trayIcon.Icon = SystemIcons.Application; // 默認圖示，如果有ico檔案會在後面替換
+            trayIcon.Icon = SystemIcons.Application;
             trayIcon.Visible = true;
             trayIcon.Text = "MyClipboard";
-            trayIcon.MouseClick += TrayIcon_MouseClick;
             
             // 托盤右鍵選單
             ContextMenuStrip trayMenu = new ContextMenuStrip();
+            trayMenu.Items.Add("淺色", null, (s, ev) => {
+                isDarkTheme = false;
+                ApplyTheme();
+                SaveSettings();
+            });
+            trayMenu.Items.Add("深色", null, (s, ev) => {
+                isDarkTheme = true;
+                ApplyTheme();
+                SaveSettings();
+            });
+            trayMenu.Items.Add(new ToolStripSeparator());
             trayMenu.Items.Add("退出", null, (s, ev) => {
                 Application.Exit();
             });
@@ -226,9 +242,6 @@ namespace MyClipboard
 
         private void MainForm_Load(object sender, EventArgs e)
         {
-            // 載入保存的位置
-            LoadWindowPosition();
-            
             // 啟動時隱藏窗口
             this.Hide();
         }
@@ -237,6 +250,47 @@ namespace MyClipboard
         {
             // 失去焦點時隱藏
             this.Hide();
+        }
+
+        private void ListView_DrawItem(object sender, DrawListViewItemEventArgs e)
+        {
+            // 隴行換色
+            Color itemBgColor = (e.ItemIndex % 2 == 0) ? bgColor1 : bgColor2;
+            using (SolidBrush bgBrush = new SolidBrush(itemBgColor))
+            {
+                e.Graphics.FillRectangle(bgBrush, e.Bounds);
+            }
+
+            ClipboardItem item = e.Item.Tag as ClipboardItem;
+            if (item == null) return;
+
+            // 給製文字（左對齊）
+            Rectangle textRect = new Rectangle(e.Bounds.X + 5, e.Bounds.Y, e.Bounds.Width - 60, e.Bounds.Height);
+            TextRenderer.DrawText(e.Graphics, item.ToString(), listView.Font, textRect, 
+                textColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+            // 給製圖片（右對齊）
+            if (item.Format == "Image" && item.Data != null && e.Item.ImageIndex >= 0)
+            {
+                try
+                {
+                    Image thumbnail = imageList.Images[e.Item.ImageIndex];
+                    int imgX = e.Bounds.Right - 53;
+                    int imgY = e.Bounds.Y + (e.Bounds.Height - 48) / 2;
+                    e.Graphics.DrawImage(thumbnail, imgX, imgY, 48, 48);
+                }
+                catch { }
+            }
+
+            // 選中時的邊框
+            if (e.Item.Selected)
+            {
+                using (Pen pen = new Pen(Color.FromArgb(0, 120, 215), 2))
+                {
+                    Rectangle selRect = new Rectangle(e.Bounds.X, e.Bounds.Y, e.Bounds.Width - 1, e.Bounds.Height - 1);
+                    e.Graphics.DrawRectangle(pen, selRect);
+                }
+            }
         }
 
         private void Form_MouseDown(object sender, MouseEventArgs e)
@@ -266,9 +320,9 @@ namespace MyClipboard
             }
         }
 
-        private void TrayIcon_MouseClick(object sender, MouseEventArgs e)
+        protected override void WndProc(ref Message m)
         {
-            if (e.Button == MouseButtons.Left)
+            if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HOTKEY_ID)
             {
                 if (this.Visible)
                 {
@@ -276,35 +330,9 @@ namespace MyClipboard
                 }
                 else
                 {
-                    ShowWindow();
+                    this.Show();
+                    this.Activate();
                 }
-            }
-        }
-
-        private void ToggleWindow()
-        {
-            if (this.Visible)
-            {
-                this.Hide();
-            }
-            else
-            {
-                ShowWindow();
-            }
-        }
-
-        private void ShowWindow()
-        {
-            // 使用當前位置顯示（已經通過LoadWindowPosition設置）
-            this.Show();
-            this.Activate();
-        }
-
-        protected override void WndProc(ref Message m)
-        {
-            if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HOTKEY_ID)
-            {
-                ToggleWindow();
             }
             base.WndProc(ref m);
         }
@@ -423,8 +451,9 @@ namespace MyClipboard
 
         private void RefreshListView()
         {
+            listView.BeginUpdate();
             listView.Items.Clear();
-            largeImageList.Images.Clear();
+            imageList.Images.Clear();
             
             int imageIndex = 0;
             foreach (var item in clipboardHistory)
@@ -441,28 +470,25 @@ namespace MyClipboard
                         {
                             Image img = Image.FromStream(ms);
                             Image thumbnail = CreateThumbnail(img, 48, 48);
-                            largeImageList.Images.Add(thumbnail);
+                            imageList.Images.Add(thumbnail);
                             lvi.ImageIndex = imageIndex;
                             imageIndex++;
                         }
                     }
                     catch { }
                 }
-                else
-                {
-                    // 非圖片項目也添加透明圖標以保持對齊
-                    Bitmap emptyIcon = new Bitmap(48, 48);
-                    using (Graphics g = Graphics.FromImage(emptyIcon))
-                    {
-                        g.Clear(Color.Transparent);
-                    }
-                    largeImageList.Images.Add(emptyIcon);
-                    lvi.ImageIndex = imageIndex;
-                    imageIndex++;
-                }
                 
                 listView.Items.Add(lvi);
             }
+            
+            // 設置固定高度，無間距
+            if (listView.Items.Count > 0)
+            {
+                listView.Items[0].EnsureVisible();
+            }
+            
+            listView.EndUpdate();
+            listView.Invalidate();
         }
 
         private Image CreateThumbnail(Image image, int width, int height)
@@ -615,12 +641,18 @@ namespace MyClipboard
                 {
                     writer.Write(this.Location.X);
                     writer.Write(this.Location.Y);
+                    writer.Write(isDarkTheme);
                 }
             }
             catch { }
         }
+        
+        private void SaveSettings()
+        {
+            SaveWindowPosition();
+        }
 
-        private void LoadWindowPosition()
+        private void LoadSettings()
         {
             try
             {
@@ -632,14 +664,46 @@ namespace MyClipboard
                         int x = reader.ReadInt32();
                         int y = reader.ReadInt32();
                         this.Location = new Point(x, y);
+                        
+                        if (fs.Position < fs.Length)
+                        {
+                            isDarkTheme = reader.ReadBoolean();
+                        }
                         return;
                     }
                 }
             }
             catch { }
             
-            // 如果沒有保存的位置，默認居中
+            // 如果沒有保存的設置，默認居中和深色主題
             this.StartPosition = FormStartPosition.CenterScreen;
+            isDarkTheme = true;
+        }
+
+        private void ApplyTheme()
+        {
+            if (isDarkTheme)
+            {
+                bgColor1 = Color.FromArgb(37, 37, 38);
+                bgColor2 = Color.FromArgb(45, 45, 48);
+                textColor = Color.White;
+                borderColor = Color.FromArgb(63, 63, 70);
+                this.BackColor = Color.FromArgb(45, 45, 48);
+                listView.BackColor = Color.FromArgb(30, 30, 30);
+                listView.ForeColor = Color.White;
+            }
+            else
+            {
+                bgColor1 = Color.FromArgb(245, 245, 245);
+                bgColor2 = Color.FromArgb(255, 255, 255);
+                textColor = Color.Black;
+                borderColor = Color.FromArgb(200, 200, 200);
+                this.BackColor = Color.FromArgb(230, 230, 230);
+                listView.BackColor = Color.FromArgb(250, 250, 250);
+                listView.ForeColor = Color.Black;
+            }
+            
+            listView.Invalidate();
         }
 
         private void SaveHistory()
@@ -719,7 +783,7 @@ namespace MyClipboard
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             SaveHistory();
-            SaveWindowPosition();
+            SaveSettings();
             UnregisterHotKey(this.Handle, HOTKEY_ID);
             trayIcon.Visible = false;
             
@@ -746,10 +810,6 @@ namespace MyClipboard
                 if (imageList != null)
                 {
                     imageList.Dispose();
-                }
-                if (largeImageList != null)
-                {
-                    largeImageList.Dispose();
                 }
             }
             base.Dispose(disposing);
