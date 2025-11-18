@@ -84,6 +84,8 @@ namespace MyClipboard
         private ImageList largeImageList;
         private bool isDarkTheme = true;
         private Color bgColor1, bgColor2, textColor, borderColor;
+        private int scrollOffset = 0;
+        private const int ITEM_HEIGHT = 50;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -170,10 +172,11 @@ namespace MyClipboard
             listView.BorderStyle = BorderStyle.None;
             listView.Font = new Font("Microsoft YaHei UI", 11F);
             listView.HeaderStyle = ColumnHeaderStyle.None;
-            listView.Columns.Add("", 380);
+            listView.Columns.Add("", 398);
             listView.OwnerDraw = true;
             listView.DrawItem += ListView_DrawItem;
             listView.Scrollable = false;
+            listView.MouseWheel += ListView_MouseWheel;
             listView.DoubleClick += ListView_DoubleClick;
             listView.MouseClick += ListView_MouseClick;
             listView.MouseDown += Form_MouseDown;
@@ -185,6 +188,8 @@ namespace MyClipboard
             listContextMenu = new ContextMenuStrip();
             listContextMenu.Items.Add("複製", null, CopyItem_Click);
             listContextMenu.Items.Add("刪除", null, DeleteItem_Click);
+            listContextMenu.Items.Add(new ToolStripSeparator());
+            listContextMenu.Items.Add("清空", null, ClearAll_Click);
             listView.ContextMenuStrip = listContextMenu;
 
             // 托盤圖示
@@ -192,16 +197,12 @@ namespace MyClipboard
             trayIcon.Icon = SystemIcons.Application;
             trayIcon.Visible = true;
             trayIcon.Text = "MyClipboard";
+            trayIcon.MouseClick += TrayIcon_MouseClick;
             
             // 托盤右鍵選單
             ContextMenuStrip trayMenu = new ContextMenuStrip();
-            trayMenu.Items.Add("淺色", null, (s, ev) => {
-                isDarkTheme = false;
-                ApplyTheme();
-                SaveSettings();
-            });
-            trayMenu.Items.Add("深色", null, (s, ev) => {
-                isDarkTheme = true;
+            trayMenu.Items.Add("切換主題", null, (s, ev) => {
+                isDarkTheme = !isDarkTheme;
                 ApplyTheme();
                 SaveSettings();
             });
@@ -293,6 +294,17 @@ namespace MyClipboard
             }
         }
 
+        private void ListView_MouseWheel(object sender, MouseEventArgs e)
+        {
+            int delta = e.Delta / 120;
+            scrollOffset -= delta;
+            
+            int maxScroll = Math.Max(0, clipboardHistory.Count - (listView.ClientSize.Height / ITEM_HEIGHT));
+            scrollOffset = Math.Max(0, Math.Min(scrollOffset, maxScroll));
+            
+            RefreshListView();
+        }
+
         private void Form_MouseDown(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
@@ -317,6 +329,22 @@ namespace MyClipboard
             {
                 isDragging = false;
                 SaveWindowPosition();
+            }
+        }
+
+        private void TrayIcon_MouseClick(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                if (this.Visible)
+                {
+                    this.Hide();
+                }
+                else
+                {
+                    this.Show();
+                    this.Activate();
+                }
             }
         }
 
@@ -455,9 +483,14 @@ namespace MyClipboard
             listView.Items.Clear();
             imageList.Images.Clear();
             
+            int startIndex = scrollOffset;
+            int visibleCount = (listView.ClientSize.Height / ITEM_HEIGHT) + 1;
+            int endIndex = Math.Min(startIndex + visibleCount, clipboardHistory.Count);
+            
             int imageIndex = 0;
-            foreach (var item in clipboardHistory)
+            for (int i = startIndex; i < endIndex; i++)
             {
+                var item = clipboardHistory[i];
                 ListViewItem lvi = new ListViewItem(item.ToString());
                 lvi.Tag = item;
                 
@@ -481,7 +514,7 @@ namespace MyClipboard
                 listView.Items.Add(lvi);
             }
             
-            // 設置固定高度，無間距
+            // 設置固定高度
             if (listView.Items.Count > 0)
             {
                 listView.Items[0].EnsureVisible();
@@ -626,6 +659,26 @@ namespace MyClipboard
             }
         }
 
+        private void ClearAll_Click(object sender, EventArgs e)
+        {
+            if (clipboardHistory.Count == 0)
+                return;
+                
+            DialogResult result = MessageBox.Show(
+                "確定要清空所有記錄嗎？",
+                "確認清空",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+                
+            if (result == DialogResult.Yes)
+            {
+                clipboardHistory.Clear();
+                scrollOffset = 0;
+                RefreshListView();
+                SaveHistory();
+            }
+        }
+
         private void SaveWindowPosition()
         {
             try
@@ -688,7 +741,7 @@ namespace MyClipboard
                 bgColor2 = Color.FromArgb(45, 45, 48);
                 textColor = Color.White;
                 borderColor = Color.FromArgb(63, 63, 70);
-                this.BackColor = Color.FromArgb(45, 45, 48);
+                this.BackColor = Color.FromArgb(63, 63, 70);
                 listView.BackColor = Color.FromArgb(30, 30, 30);
                 listView.ForeColor = Color.White;
             }
@@ -697,8 +750,8 @@ namespace MyClipboard
                 bgColor1 = Color.FromArgb(245, 245, 245);
                 bgColor2 = Color.FromArgb(255, 255, 255);
                 textColor = Color.Black;
-                borderColor = Color.FromArgb(200, 200, 200);
-                this.BackColor = Color.FromArgb(230, 230, 230);
+                borderColor = Color.FromArgb(180, 180, 180);
+                this.BackColor = Color.FromArgb(180, 180, 180);
                 listView.BackColor = Color.FromArgb(250, 250, 250);
                 listView.ForeColor = Color.Black;
             }
