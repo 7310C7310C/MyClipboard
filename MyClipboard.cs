@@ -11,6 +11,44 @@ using System.Runtime.Serialization.Formatters.Binary;
 
 namespace MyClipboard
 {
+    // 剪貼板監聽器
+    public class ClipboardMonitor : NativeWindow, IDisposable
+    {
+        private const int WM_CLIPBOARDUPDATE = 0x031D;
+        
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool AddClipboardFormatListener(IntPtr hwnd);
+        
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
+        
+        public event EventHandler ClipboardChanged;
+        
+        public ClipboardMonitor()
+        {
+            CreateHandle(new CreateParams());
+            AddClipboardFormatListener(this.Handle);
+        }
+        
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_CLIPBOARDUPDATE)
+            {
+                if (ClipboardChanged != null)
+                {
+                    ClipboardChanged(this, EventArgs.Empty);
+                }
+            }
+            base.WndProc(ref m);
+        }
+        
+        public void Dispose()
+        {
+            RemoveClipboardFormatListener(this.Handle);
+            DestroyHandle();
+        }
+    }
+
     public class ClipboardItem
     {
         public DateTime Time { get; set; }
@@ -38,11 +76,12 @@ namespace MyClipboard
         private List<ClipboardItem> clipboardHistory = new List<ClipboardItem>();
         private string dataPath = @"C:\ProgramData\MyClipboard\history.dat";
         private string settingsPath = @"C:\ProgramData\MyClipboard\settings.dat";
-        private IDataObject lastClipboardData = null;
-        private System.Windows.Forms.Timer clipboardTimer;
+        private ClipboardMonitor clipboardMonitor;
+        private string lastClipboardText = null;
         private bool isDragging = false;
         private Point dragStartPoint;
         private ImageList imageList;
+        private Panel titleBarPanel;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -72,16 +111,17 @@ namespace MyClipboard
             LoadHistory();
             RegisterHotKey(this.Handle, HOTKEY_ID, MOD_CONTROL | MOD_ALT, VK_X);
             
-            // 启动剪贴板监控
-            clipboardTimer = new System.Windows.Forms.Timer();
-            clipboardTimer.Interval = 500;
-            clipboardTimer.Tick += ClipboardTimer_Tick;
-            clipboardTimer.Start();
+            // 啟動剪貼板監控
+            clipboardMonitor = new ClipboardMonitor();
+            clipboardMonitor.ClipboardChanged += ClipboardMonitor_ClipboardChanged;
+            
+            // 初始化時捕獲當前剪貼板內容
+            CaptureCurrentClipboard();
         }
 
         private void InitializeComponents()
         {
-            // 主窗体设置
+            // 主窗體設置
             this.Text = "MyClipboard";
             this.Size = new Size(400, 600);
             this.FormBorderStyle = FormBorderStyle.None;
@@ -89,20 +129,39 @@ namespace MyClipboard
             this.ShowInTaskbar = false;
             this.TopMost = true;
             
-            // 拖动功能
-            this.MouseDown += MainForm_MouseDown;
-            this.MouseMove += MainForm_MouseMove;
-            this.MouseUp += MainForm_MouseUp;
-            
-            // 添加边框效果
+            // 添加邊框效果
             this.BackColor = Color.FromArgb(45, 45, 48);
             this.Padding = new Padding(1);
 
-            // 内容面板
+            // 內容面板
             Panel contentPanel = new Panel();
             contentPanel.Dock = DockStyle.Fill;
             contentPanel.BackColor = Color.FromArgb(30, 30, 30);
             this.Controls.Add(contentPanel);
+            
+            // 標題欄（用於拖動）
+            titleBarPanel = new Panel();
+            titleBarPanel.Dock = DockStyle.Top;
+            titleBarPanel.Height = 30;
+            titleBarPanel.BackColor = Color.FromArgb(45, 45, 48);
+            titleBarPanel.Cursor = Cursors.SizeAll;
+            titleBarPanel.MouseDown += TitleBar_MouseDown;
+            titleBarPanel.MouseMove += TitleBar_MouseMove;
+            titleBarPanel.MouseUp += TitleBar_MouseUp;
+            
+            Label titleLabel = new Label();
+            titleLabel.Text = "MyClipboard";
+            titleLabel.ForeColor = Color.White;
+            titleLabel.Font = new Font("Microsoft YaHei UI", 10F);
+            titleLabel.AutoSize = false;
+            titleLabel.Dock = DockStyle.Fill;
+            titleLabel.TextAlign = ContentAlignment.MiddleCenter;
+            titleLabel.MouseDown += TitleBar_MouseDown;
+            titleLabel.MouseMove += TitleBar_MouseMove;
+            titleLabel.MouseUp += TitleBar_MouseUp;
+            titleBarPanel.Controls.Add(titleLabel);
+            
+            contentPanel.Controls.Add(titleBarPanel);
 
             // ImageList for thumbnails
             imageList = new ImageList();
@@ -120,7 +179,7 @@ namespace MyClipboard
             listView.ForeColor = Color.White;
             listView.BorderStyle = BorderStyle.None;
             listView.Font = new Font("Microsoft YaHei UI", 11F);
-            listView.Columns.Add("Content", 380);
+            listView.Columns.Add("Content", 380, HorizontalAlignment.Left);
             listView.SmallImageList = imageList;
             listView.DoubleClick += ListView_DoubleClick;
             listView.MouseClick += ListView_MouseClick;
@@ -190,7 +249,7 @@ namespace MyClipboard
             this.Hide();
         }
 
-        private void MainForm_MouseDown(object sender, MouseEventArgs e)
+        private void TitleBar_MouseDown(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
             {
@@ -199,16 +258,16 @@ namespace MyClipboard
             }
         }
 
-        private void MainForm_MouseMove(object sender, MouseEventArgs e)
+        private void TitleBar_MouseMove(object sender, MouseEventArgs e)
         {
             if (isDragging)
             {
-                Point p = PointToScreen(e.Location);
+                Point p = this.PointToScreen(titleBarPanel.PointToClient(Control.MousePosition));
                 this.Location = new Point(p.X - dragStartPoint.X, p.Y - dragStartPoint.Y);
             }
         }
 
-        private void MainForm_MouseUp(object sender, MouseEventArgs e)
+        private void TitleBar_MouseUp(object sender, MouseEventArgs e)
         {
             if (isDragging)
             {
@@ -260,105 +319,116 @@ namespace MyClipboard
             base.WndProc(ref m);
         }
 
-        private void ClipboardTimer_Tick(object sender, EventArgs e)
+        private void ClipboardMonitor_ClipboardChanged(object sender, EventArgs e)
+        {
+            // 延遲一下確保剪貼板數據已經準備好
+            System.Threading.Thread.Sleep(50);
+            CaptureCurrentClipboard();
+        }
+
+        private void CaptureCurrentClipboard()
         {
             try
             {
-                if (Clipboard.ContainsData(DataFormats.Text) || 
-                    Clipboard.ContainsData(DataFormats.UnicodeText) ||
-                    Clipboard.ContainsData(DataFormats.Rtf) ||
-                    Clipboard.ContainsData(DataFormats.Html) ||
-                    Clipboard.ContainsImage())
+                if (!Clipboard.ContainsData(DataFormats.Text) && 
+                    !Clipboard.ContainsData(DataFormats.UnicodeText) &&
+                    !Clipboard.ContainsData(DataFormats.Rtf) &&
+                    !Clipboard.ContainsData(DataFormats.Html) &&
+                    !Clipboard.ContainsImage())
                 {
-                    IDataObject currentData = Clipboard.GetDataObject();
+                    return;
+                }
+
+                ClipboardItem item = new ClipboardItem();
+                item.Time = DateTime.Now;
+                bool hasData = false;
+
+                // 優先處理文本
+                if (Clipboard.ContainsData(DataFormats.UnicodeText))
+                {
+                    string text = Clipboard.GetText(TextDataFormat.UnicodeText);
+                    if (text == lastClipboardText)
+                        return;
                     
-                    if (IsNewClipboardData(currentData))
+                    lastClipboardText = text;
+                    item.Text = text;
+                    item.Format = "Text";
+                    hasData = true;
+                }
+                else if (Clipboard.ContainsData(DataFormats.Text))
+                {
+                    string text = Clipboard.GetText(TextDataFormat.Text);
+                    if (text == lastClipboardText)
+                        return;
+                    
+                    lastClipboardText = text;
+                    item.Text = text;
+                    item.Format = "Text";
+                    hasData = true;
+                }
+                else if (Clipboard.ContainsData(DataFormats.Rtf))
+                {
+                    string rtf = Clipboard.GetData(DataFormats.Rtf) as string;
+                    item.Data = Encoding.UTF8.GetBytes(rtf);
+                    item.Format = "RTF";
+                    item.Text = "富文本內容";
+                    lastClipboardText = null;
+                    hasData = true;
+                }
+                else if (Clipboard.ContainsData(DataFormats.Html))
+                {
+                    string html = Clipboard.GetData(DataFormats.Html) as string;
+                    item.Data = Encoding.UTF8.GetBytes(html);
+                    item.Format = "HTML";
+                    item.Text = "HTML內容";
+                    lastClipboardText = null;
+                    hasData = true;
+                }
+                else if (Clipboard.ContainsImage())
+                {
+                    Image img = Clipboard.GetImage();
+                    using (MemoryStream ms = new MemoryStream())
                     {
-                        AddClipboardItem(currentData);
-                        lastClipboardData = currentData;
+                        img.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                        item.Data = ms.ToArray();
                     }
+                    item.Format = "Image";
+                    item.Text = string.Format("圖片 ({0}x{1})", img.Width, img.Height);
+                    lastClipboardText = null;
+                    hasData = true;
+                }
+
+                if (!hasData)
+                    return;
+
+                // 避免重複
+                if (clipboardHistory.Count > 0)
+                {
+                    var last = clipboardHistory[0];
+                    if (last.Text == item.Text && last.Format == item.Format)
+                        return;
+                }
+
+                clipboardHistory.Insert(0, item);
+                
+                // 在UI線程中更新界面
+                if (this.InvokeRequired)
+                {
+                    this.Invoke(new Action(() => {
+                        RefreshListView();
+                        SaveHistory();
+                    }));
+                }
+                else
+                {
+                    RefreshListView();
+                    SaveHistory();
                 }
             }
             catch
             {
                 // 剪貼板訪問失敗時忽略
             }
-        }
-
-        private bool IsNewClipboardData(IDataObject newData)
-        {
-            if (lastClipboardData == null)
-                return true;
-
-            // 比较文本内容
-            if (newData.GetDataPresent(DataFormats.UnicodeText) && 
-                lastClipboardData.GetDataPresent(DataFormats.UnicodeText))
-            {
-                string newText = newData.GetData(DataFormats.UnicodeText) as string;
-                string lastText = lastClipboardData.GetData(DataFormats.UnicodeText) as string;
-                return newText != lastText;
-            }
-
-            return true;
-        }
-
-        private void AddClipboardItem(IDataObject data)
-        {
-            ClipboardItem item = new ClipboardItem();
-            item.Time = DateTime.Now;
-
-            // 优先处理文本
-            if (data.GetDataPresent(DataFormats.UnicodeText))
-            {
-                item.Text = data.GetData(DataFormats.UnicodeText) as string;
-                item.Format = "Text";
-            }
-            else if (data.GetDataPresent(DataFormats.Text))
-            {
-                item.Text = data.GetData(DataFormats.Text) as string;
-                item.Format = "Text";
-            }
-            else if (data.GetDataPresent(DataFormats.Rtf))
-            {
-                string rtf = data.GetData(DataFormats.Rtf) as string;
-                item.Data = Encoding.UTF8.GetBytes(rtf);
-                item.Format = "RTF";
-                item.Text = "富文本内容";
-            }
-            else if (data.GetDataPresent(DataFormats.Html))
-            {
-                string html = data.GetData(DataFormats.Html) as string;
-                item.Data = Encoding.UTF8.GetBytes(html);
-                item.Format = "HTML";
-                item.Text = "HTML内容";
-            }
-            else if (Clipboard.ContainsImage())
-            {
-                Image img = Clipboard.GetImage();
-                using (MemoryStream ms = new MemoryStream())
-                {
-                    img.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                    item.Data = ms.ToArray();
-                }
-                item.Format = "Image";
-                item.Text = string.Format("圖片 ({0}x{1})", img.Width, img.Height);
-            }
-            else
-            {
-                return; // 不支持的格式
-            }
-
-            // 避免重复
-            if (clipboardHistory.Count > 0)
-            {
-                var last = clipboardHistory[0];
-                if (last.Text == item.Text && last.Format == item.Format)
-                    return;
-            }
-
-            clipboardHistory.Insert(0, item);
-            RefreshListView();
-            SaveHistory();
         }
 
         private void RefreshListView()
@@ -650,7 +720,12 @@ namespace MyClipboard
             SaveWindowPosition();
             UnregisterHotKey(this.Handle, HOTKEY_ID);
             trayIcon.Visible = false;
-            clipboardTimer.Stop();
+            
+            if (clipboardMonitor != null)
+            {
+                clipboardMonitor.Dispose();
+            }
+            
             base.OnFormClosing(e);
         }
 
@@ -662,9 +737,9 @@ namespace MyClipboard
                 {
                     trayIcon.Dispose();
                 }
-                if (clipboardTimer != null)
+                if (clipboardMonitor != null)
                 {
-                    clipboardTimer.Dispose();
+                    clipboardMonitor.Dispose();
                 }
                 if (imageList != null)
                 {
