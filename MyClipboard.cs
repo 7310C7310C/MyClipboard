@@ -22,11 +22,11 @@ namespace MyClipboard
         {
             if (!string.IsNullOrEmpty(Text))
             {
-                string preview = Text.Length > 50 ? Text.Substring(0, 50) + "..." : Text;
+                string preview = Text.Length > 80 ? Text.Substring(0, 80) + "..." : Text;
                 preview = preview.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ");
-                return string.Format("[{0}] {1}", Time.ToString("HH:mm:ss"), preview);
+                return preview;
             }
-            return string.Format("[{0}] {1}", Time.ToString("HH:mm:ss"), Format);
+            return Format;
         }
     }
 
@@ -37,8 +37,12 @@ namespace MyClipboard
         private ContextMenuStrip listContextMenu;
         private List<ClipboardItem> clipboardHistory = new List<ClipboardItem>();
         private string dataPath = @"C:\ProgramData\MyClipboard\history.dat";
+        private string settingsPath = @"C:\ProgramData\MyClipboard\settings.dat";
         private IDataObject lastClipboardData = null;
         private System.Windows.Forms.Timer clipboardTimer;
+        private bool isDragging = false;
+        private Point dragStartPoint;
+        private ImageList imageList;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -81,9 +85,14 @@ namespace MyClipboard
             this.Text = "MyClipboard";
             this.Size = new Size(400, 600);
             this.FormBorderStyle = FormBorderStyle.None;
-            this.StartPosition = FormStartPosition.Manual;
+            this.StartPosition = FormStartPosition.CenterScreen;
             this.ShowInTaskbar = false;
             this.TopMost = true;
+            
+            // 拖动功能
+            this.MouseDown += MainForm_MouseDown;
+            this.MouseMove += MainForm_MouseMove;
+            this.MouseUp += MainForm_MouseUp;
             
             // 添加边框效果
             this.BackColor = Color.FromArgb(45, 45, 48);
@@ -95,7 +104,12 @@ namespace MyClipboard
             contentPanel.BackColor = Color.FromArgb(30, 30, 30);
             this.Controls.Add(contentPanel);
 
-            // ListView设置
+            // ImageList for thumbnails
+            imageList = new ImageList();
+            imageList.ImageSize = new Size(48, 48);
+            imageList.ColorDepth = ColorDepth.Depth32Bit;
+
+            // ListView設置
             listView = new ListView();
             listView.Dock = DockStyle.Fill;
             listView.View = View.Details;
@@ -105,23 +119,32 @@ namespace MyClipboard
             listView.BackColor = Color.FromArgb(30, 30, 30);
             listView.ForeColor = Color.White;
             listView.BorderStyle = BorderStyle.None;
+            listView.Font = new Font("Microsoft YaHei UI", 11F);
             listView.Columns.Add("Content", 380);
+            listView.SmallImageList = imageList;
             listView.DoubleClick += ListView_DoubleClick;
             listView.MouseClick += ListView_MouseClick;
             contentPanel.Controls.Add(listView);
 
-            // 右键菜单
+            // 右鍵選單
             listContextMenu = new ContextMenuStrip();
-            listContextMenu.Items.Add("复制", null, CopyItem_Click);
-            listContextMenu.Items.Add("删除", null, DeleteItem_Click);
+            listContextMenu.Items.Add("複製", null, CopyItem_Click);
+            listContextMenu.Items.Add("刪除", null, DeleteItem_Click);
             listView.ContextMenuStrip = listContextMenu;
 
-            // 托盘图标
+            // 托盤圖示
             trayIcon = new NotifyIcon();
-            trayIcon.Icon = SystemIcons.Application; // 默认图标，如果有ico文件会在后面替换
+            trayIcon.Icon = SystemIcons.Application; // 默認圖示，如果有ico檔案會在後面替換
             trayIcon.Visible = true;
             trayIcon.Text = "MyClipboard";
             trayIcon.MouseClick += TrayIcon_MouseClick;
+            
+            // 托盤右鍵選單
+            ContextMenuStrip trayMenu = new ContextMenuStrip();
+            trayMenu.Items.Add("退出", null, (s, ev) => {
+                Application.Exit();
+            });
+            trayIcon.ContextMenuStrip = trayMenu;
 
             // 尝试加载自定义图标
             try
@@ -154,25 +177,58 @@ namespace MyClipboard
 
         private void MainForm_Load(object sender, EventArgs e)
         {
-            // 启动时隐藏窗口
-            this.Hide();
+            // 載入保存的位置
+            LoadWindowPosition();
             
-            // 设置窗口位置在屏幕右侧
-            Rectangle workingArea = Screen.PrimaryScreen.WorkingArea;
-            this.Location = new Point(workingArea.Right - this.Width - 10, workingArea.Top + 50);
+            // 啟動時隱藏窗口
+            this.Hide();
         }
 
         private void MainForm_Deactivate(object sender, EventArgs e)
         {
-            // 失去焦点时隐藏
+            // 失去焦點時隱藏
             this.Hide();
+        }
+
+        private void MainForm_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                isDragging = true;
+                dragStartPoint = new Point(e.X, e.Y);
+            }
+        }
+
+        private void MainForm_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (isDragging)
+            {
+                Point p = PointToScreen(e.Location);
+                this.Location = new Point(p.X - dragStartPoint.X, p.Y - dragStartPoint.Y);
+            }
+        }
+
+        private void MainForm_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (isDragging)
+            {
+                isDragging = false;
+                SaveWindowPosition();
+            }
         }
 
         private void TrayIcon_MouseClick(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
             {
-                ToggleWindow();
+                if (this.Visible)
+                {
+                    this.Hide();
+                }
+                else
+                {
+                    ShowWindow();
+                }
             }
         }
 
@@ -190,18 +246,7 @@ namespace MyClipboard
 
         private void ShowWindow()
         {
-            // 更新位置到鼠标附近或屏幕右侧
-            Rectangle workingArea = Screen.PrimaryScreen.WorkingArea;
-            Point cursorPos = Cursor.Position;
-            
-            int x = Math.Min(cursorPos.X, workingArea.Right - this.Width);
-            int y = Math.Min(cursorPos.Y, workingArea.Bottom - this.Height);
-            
-            // 优先在屏幕右侧显示
-            x = workingArea.Right - this.Width - 10;
-            y = Math.Max(workingArea.Top + 50, Math.Min(y, workingArea.Bottom - this.Height));
-            
-            this.Location = new Point(x, y);
+            // 使用當前位置顯示（已經通過LoadWindowPosition設置）
             this.Show();
             this.Activate();
         }
@@ -229,14 +274,14 @@ namespace MyClipboard
                     
                     if (IsNewClipboardData(currentData))
                     {
-                        lastClipboardData = currentData;
                         AddClipboardItem(currentData);
+                        lastClipboardData = currentData;
                     }
                 }
             }
             catch
             {
-                // 剪贴板访问失败时忽略
+                // 剪貼板訪問失敗時忽略
             }
         }
 
@@ -289,14 +334,14 @@ namespace MyClipboard
             }
             else if (Clipboard.ContainsImage())
             {
+                Image img = Clipboard.GetImage();
                 using (MemoryStream ms = new MemoryStream())
                 {
-                    Image img = Clipboard.GetImage();
                     img.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
                     item.Data = ms.ToArray();
                 }
                 item.Format = "Image";
-                item.Text = "图片";
+                item.Text = string.Format("圖片 ({0}x{1})", img.Width, img.Height);
             }
             else
             {
@@ -319,12 +364,54 @@ namespace MyClipboard
         private void RefreshListView()
         {
             listView.Items.Clear();
+            imageList.Images.Clear();
+            
+            int imageIndex = 0;
             foreach (var item in clipboardHistory)
             {
                 ListViewItem lvi = new ListViewItem(item.ToString());
                 lvi.Tag = item;
+                
+                // 為圖片添加縮略圖
+                if (item.Format == "Image" && item.Data != null)
+                {
+                    try
+                    {
+                        using (MemoryStream ms = new MemoryStream(item.Data))
+                        {
+                            Image img = Image.FromStream(ms);
+                            Image thumbnail = CreateThumbnail(img, 48, 48);
+                            imageList.Images.Add(thumbnail);
+                            lvi.ImageIndex = imageIndex;
+                            imageIndex++;
+                        }
+                    }
+                    catch { }
+                }
+                
                 listView.Items.Add(lvi);
             }
+        }
+
+        private Image CreateThumbnail(Image image, int width, int height)
+        {
+            double ratioX = (double)width / image.Width;
+            double ratioY = (double)height / image.Height;
+            double ratio = Math.Min(ratioX, ratioY);
+
+            int newWidth = (int)(image.Width * ratio);
+            int newHeight = (int)(image.Height * ratio);
+
+            Bitmap newImage = new Bitmap(width, height);
+            using (Graphics g = Graphics.FromImage(newImage))
+            {
+                g.Clear(Color.Transparent);
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                int x = (width - newWidth) / 2;
+                int y = (height - newHeight) / 2;
+                g.DrawImage(image, x, y, newWidth, newHeight);
+            }
+            return newImage;
         }
 
         private void ListView_DoubleClick(object sender, EventArgs e)
@@ -378,7 +465,7 @@ namespace MyClipboard
             }
             catch (Exception ex)
             {
-                MessageBox.Show("粘贴失败: " + ex.Message, "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("貼上失敗: " + ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -425,7 +512,7 @@ namespace MyClipboard
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("复制失败: " + ex.Message, "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show("複製失敗: " + ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }
@@ -439,6 +526,48 @@ namespace MyClipboard
                 RefreshListView();
                 SaveHistory();
             }
+        }
+
+        private void SaveWindowPosition()
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(settingsPath);
+                if (!Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+
+                using (FileStream fs = new FileStream(settingsPath, FileMode.Create))
+                using (BinaryWriter writer = new BinaryWriter(fs))
+                {
+                    writer.Write(this.Location.X);
+                    writer.Write(this.Location.Y);
+                }
+            }
+            catch { }
+        }
+
+        private void LoadWindowPosition()
+        {
+            try
+            {
+                if (File.Exists(settingsPath))
+                {
+                    using (FileStream fs = new FileStream(settingsPath, FileMode.Open))
+                    using (BinaryReader reader = new BinaryReader(fs))
+                    {
+                        int x = reader.ReadInt32();
+                        int y = reader.ReadInt32();
+                        this.Location = new Point(x, y);
+                        return;
+                    }
+                }
+            }
+            catch { }
+            
+            // 如果沒有保存的位置，默認居中
+            this.StartPosition = FormStartPosition.CenterScreen;
         }
 
         private void SaveHistory()
@@ -518,6 +647,7 @@ namespace MyClipboard
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             SaveHistory();
+            SaveWindowPosition();
             UnregisterHotKey(this.Handle, HOTKEY_ID);
             trayIcon.Visible = false;
             clipboardTimer.Stop();
@@ -535,6 +665,10 @@ namespace MyClipboard
                 if (clipboardTimer != null)
                 {
                     clipboardTimer.Dispose();
+                }
+                if (imageList != null)
+                {
+                    imageList.Dispose();
                 }
             }
             base.Dispose(disposing);
