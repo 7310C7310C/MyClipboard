@@ -509,7 +509,12 @@ namespace MyClipboardApp
         public Guid Id { get; set; }
         public DateTime Timestamp { get; set; }
         public string Preview { get; set; }
-        public List<ClipboardFormatPayload> Formats { get; set; } = new List<ClipboardFormatPayload>();
+        public List<ClipboardFormatPayload> Formats { get; set; }
+
+        public ClipboardEntry()
+        {
+            Formats = new List<ClipboardFormatPayload>();
+        }
 
         public static string BuildPreview(IEnumerable<ClipboardFormatPayload> payloads)
         {
