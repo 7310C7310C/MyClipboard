@@ -166,6 +166,10 @@ namespace MyClipboard
             listPanel.Dock = DockStyle.Fill;
             listPanel.BackColor = Color.FromArgb(30, 30, 30);
             listPanel.Font = new Font("Consolas", 9F);
+            // 啟用雙緩衝減少閃爍
+            typeof(Panel).InvokeMember("DoubleBuffered",
+                System.Reflection.BindingFlags.SetProperty | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                null, listPanel, new object[] { true });
             listPanel.Paint += ListPanel_Paint;
             listPanel.MouseDown += ListPanel_MouseDown;
             listPanel.MouseMove += Form_MouseMove;
@@ -226,16 +230,27 @@ namespace MyClipboard
             
             // 主題切換二級菜單
             ToolStripMenuItem themeMenuItem = new ToolStripMenuItem("切換主題");
-            themeMenuItem.DropDownItems.Add("淺色", null, (s, ev) => {
+            ToolStripMenuItem lightThemeItem = new ToolStripMenuItem("淺色");
+            lightThemeItem.Click += (s, ev) => {
                 isDarkTheme = false;
                 ApplyTheme();
                 SaveSettings();
-            });
-            themeMenuItem.DropDownItems.Add("深色", null, (s, ev) => {
+            };
+            ToolStripMenuItem darkThemeItem = new ToolStripMenuItem("深色");
+            darkThemeItem.Click += (s, ev) => {
                 isDarkTheme = true;
                 ApplyTheme();
                 SaveSettings();
-            });
+            };
+            themeMenuItem.DropDownItems.Add(lightThemeItem);
+            themeMenuItem.DropDownItems.Add(darkThemeItem);
+            
+            // 設置選中狀態
+            themeMenuItem.DropDownOpening += (s, ev) => {
+                lightThemeItem.Checked = !isDarkTheme;
+                darkThemeItem.Checked = isDarkTheme;
+            };
+            
             trayMenu.Items.Add(themeMenuItem);
             
             trayMenu.Items.Add(new ToolStripSeparator());
@@ -279,6 +294,7 @@ namespace MyClipboard
             this.Show();
             this.Activate();
             this.BringToFront();
+            this.TopMost = true;
             
             // 首次運行提示
             if (firstRun)
@@ -289,8 +305,8 @@ namespace MyClipboard
 
         private void MainForm_Deactivate(object sender, EventArgs e)
         {
-            // 失去焦點時隱藏
-            this.Hide();
+            // 不自动隱藏，保持置顶
+            // this.Hide();
         }
 
         private void ListPanel_Paint(object sender, PaintEventArgs e)
@@ -418,11 +434,16 @@ namespace MyClipboard
                 int totalHeight = clipboardHistory.Count * ITEM_HEIGHT;
                 int scrollDelta = (deltaY * totalHeight) / listPanel.ClientSize.Height;
                 
-                scrollOffset = scrollOffsetDragStart + scrollDelta;
+                int newScrollOffset = scrollOffsetDragStart + scrollDelta;
                 int maxScroll = Math.Max(0, totalHeight - listPanel.ClientSize.Height);
-                scrollOffset = Math.Max(0, Math.Min(scrollOffset, maxScroll));
+                newScrollOffset = Math.Max(0, Math.Min(newScrollOffset, maxScroll));
                 
-                listPanel.Invalidate();
+                // 只在滚动偏移改变时才重绘
+                if (newScrollOffset != scrollOffset)
+                {
+                    scrollOffset = newScrollOffset;
+                    listPanel.Invalidate();
+                }
             }
         }
 
@@ -447,7 +468,8 @@ namespace MyClipboard
             }
 
             scrollBarPanel.Visible = true;
-            int scrollBarHeight = Math.Max(30, (listPanel.ClientSize.Height * listPanel.ClientSize.Height) / totalHeight);
+            // 設置最小高度為60px，確保大量記錄時也好操作
+            int scrollBarHeight = Math.Max(60, (listPanel.ClientSize.Height * listPanel.ClientSize.Height) / totalHeight);
             int scrollBarY = (scrollOffset * listPanel.ClientSize.Height) / totalHeight;
 
             scrollBarPanel.Height = scrollBarHeight;
@@ -471,6 +493,7 @@ namespace MyClipboard
                 this.Show();
                 this.Activate();
                 this.BringToFront();
+                this.TopMost = true;
             }
         }
 
@@ -536,6 +559,8 @@ namespace MyClipboard
                 {
                     this.Show();
                     this.Activate();
+                    this.BringToFront();
+                    this.TopMost = true;
                 }
             }
             base.WndProc(ref m);
@@ -731,8 +756,8 @@ namespace MyClipboard
                 // 粘贴后隱藏界面
                 this.Hide();
 
-                // 等待一下讓窗口完全隱藏
-                Thread.Sleep(100);
+                // 等待更長時間確保貼上完成，避免被清空
+                Thread.Sleep(300);
 
                 // 模拟 Ctrl+V 粘贴
                 keybd_event(0x11, 0, 0, UIntPtr.Zero); // Ctrl down
