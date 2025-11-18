@@ -1,13 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using System.Runtime.Serialization.Formatters.Binary;
 
 namespace MyClipboard
 {
@@ -56,187 +56,21 @@ namespace MyClipboard
         public string Format { get; set; }
         public byte[] Data { get; set; }
         
-        public string GetPreview(int maxLength = 200)
+        public override string ToString()
         {
             if (!string.IsNullOrEmpty(Text))
             {
-                string preview = Text.Length > maxLength ? Text.Substring(0, maxLength) + "..." : Text;
-                return preview;
+                return Text;
             }
             return Format;
-        }
-    }
-
-    // 卡片式剪貼板項目控件
-    public class ClipboardCard : Panel
-    {
-        private ClipboardItem item;
-        private Label textLabel;
-        private PictureBox imageBox;
-        private Label timeLabel;
-        private bool isHovered = false;
-        private Color normalColor, hoverColor, textColor;
-        
-        public ClipboardItem Item { get { return item; } }
-        public event EventHandler OnDoubleClickItem;
-        public event EventHandler OnCopyRequested;
-        public event EventHandler OnDeleteRequested;
-        
-        public ClipboardCard(ClipboardItem clipItem, bool isDark)
-        {
-            item = clipItem;
-            InitializeCard(isDark);
-        }
-        
-        private void InitializeCard(bool isDark)
-        {
-            // 設置卡片樣式
-            this.Width = 410;
-            this.Height = item.Format == "Image" ? 140 : 90;
-            this.Margin = new Padding(5, 5, 5, 5);
-            this.Padding = new Padding(12);
-            this.Cursor = Cursors.Hand;
-            
-            if (isDark)
-            {
-                normalColor = Color.FromArgb(45, 45, 48);
-                hoverColor = Color.FromArgb(60, 60, 63);
-                textColor = Color.White;
-            }
-            else
-            {
-                normalColor = Color.FromArgb(250, 250, 250);
-                hoverColor = Color.FromArgb(240, 240, 240);
-                textColor = Color.Black;
-            }
-            
-            this.BackColor = normalColor;
-            
-            // 時間標籤
-            timeLabel = new Label();
-            timeLabel.Text = item.Time.ToString("HH:mm:ss");
-            timeLabel.ForeColor = isDark ? Color.FromArgb(180, 180, 180) : Color.FromArgb(120, 120, 120);
-            timeLabel.Font = new Font("Microsoft YaHei UI", 8F);
-            timeLabel.AutoSize = true;
-            timeLabel.Location = new Point(12, 12);
-            this.Controls.Add(timeLabel);
-            
-            // 文字標籤
-            textLabel = new Label();
-            textLabel.Text = item.GetPreview(150);
-            textLabel.ForeColor = textColor;
-            textLabel.Font = new Font("Microsoft YaHei UI", 10F);
-            textLabel.AutoSize = false;
-            textLabel.Size = new Size(item.Format == "Image" ? 300 : 380, item.Format == "Image" ? 50 : 40);
-            textLabel.Location = new Point(12, 35);
-            this.Controls.Add(textLabel);
-            
-            // 圖片預覽
-            if (item.Format == "Image" && item.Data != null)
-            {
-                try
-                {
-                    using (MemoryStream ms = new MemoryStream(item.Data))
-                    {
-                        Image img = Image.FromStream(ms);
-                        Image thumbnail = CreateThumbnail(img, 80, 80);
-                        
-                        imageBox = new PictureBox();
-                        imageBox.Image = thumbnail;
-                        imageBox.SizeMode = PictureBoxSizeMode.CenterImage;
-                        imageBox.Size = new Size(80, 80);
-                        imageBox.Location = new Point(320, 35);
-                        imageBox.BackColor = Color.Transparent;
-                        this.Controls.Add(imageBox);
-                    }
-                }
-                catch { }
-            }
-            
-            // 事件處理
-            this.MouseEnter += (s, e) => { isHovered = true; this.BackColor = hoverColor; };
-            this.MouseLeave += (s, e) => { isHovered = false; this.BackColor = normalColor; };
-            this.DoubleClick += (s, e) => { if (OnDoubleClickItem != null) OnDoubleClickItem.Invoke(this, EventArgs.Empty); };
-            
-            textLabel.MouseEnter += (s, e) => { isHovered = true; this.BackColor = hoverColor; };
-            textLabel.MouseLeave += (s, e) => { isHovered = false; this.BackColor = normalColor; };
-            textLabel.DoubleClick += (s, e) => { if (OnDoubleClickItem != null) OnDoubleClickItem.Invoke(this, EventArgs.Empty); };
-            
-            timeLabel.MouseEnter += (s, e) => { isHovered = true; this.BackColor = hoverColor; };
-            timeLabel.MouseLeave += (s, e) => { isHovered = false; this.BackColor = normalColor; };
-            timeLabel.DoubleClick += (s, e) => { if (OnDoubleClickItem != null) OnDoubleClickItem.Invoke(this, EventArgs.Empty); };
-            
-            if (imageBox != null)
-            {
-                imageBox.MouseEnter += (s, e) => { isHovered = true; this.BackColor = hoverColor; };
-                imageBox.MouseLeave += (s, e) => { isHovered = false; this.BackColor = normalColor; };
-                imageBox.DoubleClick += (s, e) => { if (OnDoubleClickItem != null) OnDoubleClickItem.Invoke(this, EventArgs.Empty); };
-            }
-            
-            // 右鍵菜單
-            ContextMenuStrip menu = new ContextMenuStrip();
-            menu.BackColor = isDark ? Color.FromArgb(45, 45, 48) : Color.White;
-            menu.ForeColor = textColor;
-            
-            ToolStripMenuItem copyItem = new ToolStripMenuItem("複製");
-            copyItem.Click += (s, e) => { if (OnCopyRequested != null) OnCopyRequested.Invoke(this, EventArgs.Empty); };
-            menu.Items.Add(copyItem);
-            
-            ToolStripMenuItem deleteItem = new ToolStripMenuItem("刪除");
-            deleteItem.Click += (s, e) => { if (OnDeleteRequested != null) OnDeleteRequested.Invoke(this, EventArgs.Empty); };
-            menu.Items.Add(deleteItem);
-            
-            this.ContextMenuStrip = menu;
-        }
-        
-        private Image CreateThumbnail(Image image, int width, int height)
-        {
-            double ratioX = (double)width / image.Width;
-            double ratioY = (double)height / image.Height;
-            double ratio = Math.Min(ratioX, ratioY);
-
-            int newWidth = (int)(image.Width * ratio);
-            int newHeight = (int)(image.Height * ratio);
-
-            Bitmap newImage = new Bitmap(width, height);
-            using (Graphics g = Graphics.FromImage(newImage))
-            {
-                g.Clear(Color.Transparent);
-                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                int x = (width - newWidth) / 2;
-                int y = (height - newHeight) / 2;
-                g.DrawImage(image, x, y, newWidth, newHeight);
-            }
-            return newImage;
-        }
-        
-        public void UpdateTheme(bool isDark)
-        {
-            if (isDark)
-            {
-                normalColor = Color.FromArgb(45, 45, 48);
-                hoverColor = Color.FromArgb(60, 60, 63);
-                textColor = Color.White;
-                timeLabel.ForeColor = Color.FromArgb(180, 180, 180);
-            }
-            else
-            {
-                normalColor = Color.FromArgb(250, 250, 250);
-                hoverColor = Color.FromArgb(240, 240, 240);
-                textColor = Color.Black;
-                timeLabel.ForeColor = Color.FromArgb(120, 120, 120);
-            }
-            
-            this.BackColor = isHovered ? hoverColor : normalColor;
-            textLabel.ForeColor = textColor;
         }
     }
 
     public class MainForm : Form
     {
         private NotifyIcon trayIcon;
-        private Panel containerPanel;
-        private FlowLayoutPanel flowPanel;
+        private ListView listView;
+        private ContextMenuStrip listContextMenu;
         private List<ClipboardItem> clipboardHistory = new List<ClipboardItem>();
         private string dataPath = @"C:\ProgramData\MyClipboard\history.dat";
         private string settingsPath = @"C:\ProgramData\MyClipboard\settings.dat";
@@ -244,14 +78,27 @@ namespace MyClipboard
         private string lastClipboardText = null;
         private bool isDragging = false;
         private Point dragStartPoint;
+        private ImageList imageList;
         private bool isDarkTheme = true;
-        private Color bgColor, titleBarColor, textColor, borderColor;
+        private Color bgColor1, bgColor2, textColor, borderColor;
+        private int scrollOffset = 0;
+        private Panel listPanel;
+        private VScrollBar vScrollBar;
+        private const int MIN_ITEM_HEIGHT = 60;
+        private const int MAX_TEXT_LINES = 4;
+        private List<int> itemHeights = new List<int>();
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
 
         [DllImport("user32.dll")]
         private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
 
         [DllImport("user32.dll")]
         private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
@@ -283,70 +130,55 @@ namespace MyClipboard
         {
             // 主窗體設置
             this.Text = "MyClipboard";
-            this.Size = new Size(450, 650);
+            this.Size = new Size(400, 600);
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterScreen;
             this.ShowInTaskbar = false;
             this.TopMost = true;
+            
+            // 窗體拖動事件
+            this.MouseDown += Form_MouseDown;
+            this.MouseMove += Form_MouseMove;
+            this.MouseUp += Form_MouseUp;
+            
+            // 添加邊框效果
             this.BackColor = Color.FromArgb(45, 45, 48);
-            this.Padding = new Padding(2);
+            this.Padding = new Padding(1);
 
-            // 容器面板
-            containerPanel = new Panel();
-            containerPanel.Dock = DockStyle.Fill;
-            containerPanel.BackColor = Color.FromArgb(30, 30, 30);
-            this.Controls.Add(containerPanel);
-            
-            // 標題欄
-            Panel titleBar = new Panel();
-            titleBar.Dock = DockStyle.Top;
-            titleBar.Height = 45;
-            titleBar.BackColor = Color.FromArgb(37, 37, 38);
-            titleBar.MouseDown += TitleBar_MouseDown;
-            titleBar.MouseMove += TitleBar_MouseMove;
-            titleBar.MouseUp += TitleBar_MouseUp;
-            
-            Label titleLabel = new Label();
-            titleLabel.Text = "MyClipboard";
-            titleLabel.ForeColor = Color.White;
-            titleLabel.Font = new Font("Microsoft YaHei UI", 13F, FontStyle.Bold);
-            titleLabel.AutoSize = false;
-            titleLabel.Size = new Size(200, 45);
-            titleLabel.Location = new Point(15, 0);
-            titleLabel.TextAlign = ContentAlignment.MiddleLeft;
-            titleLabel.MouseDown += TitleBar_MouseDown;
-            titleLabel.MouseMove += TitleBar_MouseMove;
-            titleLabel.MouseUp += TitleBar_MouseUp;
-            titleBar.Controls.Add(titleLabel);
-            
-            // 清空按鈕
-            Button clearBtn = new Button();
-            clearBtn.Text = "清空";
-            clearBtn.ForeColor = Color.White;
-            clearBtn.BackColor = Color.FromArgb(60, 60, 60);
-            clearBtn.FlatStyle = FlatStyle.Flat;
-            clearBtn.FlatAppearance.BorderSize = 0;
-            clearBtn.Size = new Size(60, 28);
-            clearBtn.Location = new Point(365, 9);
-            clearBtn.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            clearBtn.Font = new Font("Microsoft YaHei UI", 9F);
-            clearBtn.Cursor = Cursors.Hand;
-            clearBtn.Click += ClearAll_Click;
-            clearBtn.MouseEnter += (s, e) => clearBtn.BackColor = Color.FromArgb(80, 80, 80);
-            clearBtn.MouseLeave += (s, e) => clearBtn.BackColor = Color.FromArgb(60, 60, 60);
-            titleBar.Controls.Add(clearBtn);
-            
-            containerPanel.Controls.Add(titleBar);
+            // 內容面板
+            Panel contentPanel = new Panel();
+            contentPanel.Dock = DockStyle.Fill;
+            contentPanel.BackColor = Color.FromArgb(30, 30, 30);
+            contentPanel.MouseDown += Form_MouseDown;
+            contentPanel.MouseMove += Form_MouseMove;
+            contentPanel.MouseUp += Form_MouseUp;
+            this.Controls.Add(contentPanel);
 
-            // FlowLayoutPanel 用於卡片式布局
-            flowPanel = new FlowLayoutPanel();
-            flowPanel.Dock = DockStyle.Fill;
-            flowPanel.AutoScroll = true;
-            flowPanel.BackColor = Color.FromArgb(30, 30, 30);
-            flowPanel.FlowDirection = FlowDirection.TopDown;
-            flowPanel.WrapContents = false;
-            flowPanel.Padding = new Padding(10);
-            containerPanel.Controls.Add(flowPanel);
+            // ImageList for thumbnails
+            imageList = new ImageList();
+            imageList.ImageSize = new Size(48, 48);
+            imageList.ColorDepth = ColorDepth.Depth32Bit;
+
+            // 清單面板（自繪）
+            listPanel = new Panel();
+            listPanel.Dock = DockStyle.Fill;
+            listPanel.BackColor = Color.FromArgb(30, 30, 30);
+            listPanel.Font = new Font("Microsoft YaHei UI", 12F);
+            listPanel.Paint += ListPanel_Paint;
+            listPanel.MouseDown += ListPanel_MouseDown;
+            listPanel.MouseMove += Form_MouseMove;
+            listPanel.MouseUp += Form_MouseUp;
+            listPanel.MouseClick += ListPanel_MouseClick;
+            listPanel.MouseDoubleClick += ListPanel_MouseDoubleClick;
+            listPanel.MouseWheel += ListPanel_MouseWheel;
+            contentPanel.Controls.Add(listPanel);
+
+            // 右鍵選單
+            listContextMenu = new ContextMenuStrip();
+            listContextMenu.Items.Add("複製", null, CopyItem_Click);
+            listContextMenu.Items.Add("刪除", null, DeleteItem_Click);
+            listContextMenu.Items.Add(new ToolStripSeparator());
+            listContextMenu.Items.Add("清空", null, ClearAll_Click);
 
             // 托盤圖示
             trayIcon = new NotifyIcon();
@@ -368,7 +200,7 @@ namespace MyClipboard
             });
             trayIcon.ContextMenuStrip = trayMenu;
 
-            // 嘗試加載自定義圖標
+            // 尝试加载自定义图标
             try
             {
                 string exePath = Application.ExecutablePath;
@@ -382,28 +214,97 @@ namespace MyClipboard
                 }
                 else
                 {
+                    // 从exe中提取图标
                     this.Icon = Icon.ExtractAssociatedIcon(exePath);
                     trayIcon.Icon = Icon.ExtractAssociatedIcon(exePath);
                 }
             }
-            catch { }
+            catch
+            {
+                // 使用默认图标
+            }
 
-            // 窗體事件
+            // 窗体事件
             this.Load += MainForm_Load;
             this.Deactivate += MainForm_Deactivate;
         }
 
         private void MainForm_Load(object sender, EventArgs e)
         {
+            // 啟動時隱藏窗口
             this.Hide();
         }
 
         private void MainForm_Deactivate(object sender, EventArgs e)
         {
+            // 失去焦點時隱藏
             this.Hide();
         }
 
-        private void TitleBar_MouseDown(object sender, MouseEventArgs e)
+        private void ListPanel_Paint(object sender, PaintEventArgs e)
+        {
+            if (clipboardHistory.Count == 0)
+                return;
+
+            int y = -scrollOffset;
+            int panelWidth = listPanel.ClientSize.Width;
+            
+            for (int i = 0; i < clipboardHistory.Count; i++)
+            {
+                if (i >= itemHeights.Count)
+                    break;
+                    
+                int itemHeight = itemHeights[i];
+                
+                // 只繪製可見的項目
+                if (y + itemHeight < 0)
+                {
+                    y += itemHeight;
+                    continue;
+                }
+                if (y > listPanel.ClientSize.Height)
+                    break;
+
+                ClipboardItem item = clipboardHistory[i];
+                Rectangle itemRect = new Rectangle(0, y, panelWidth, itemHeight);
+                
+                // 隴行換色
+                Color itemBgColor = (i % 2 == 0) ? bgColor1 : bgColor2;
+                using (SolidBrush bgBrush = new SolidBrush(itemBgColor))
+                {
+                    e.Graphics.FillRectangle(bgBrush, itemRect);
+                }
+
+                // 給製圖片（右對齊）
+                int textWidth = panelWidth - 10;
+                if (item.Format == "Image" && item.Data != null)
+                {
+                    try
+                    {
+                        int imageIndex = GetImageIndex(i);
+                        if (imageIndex >= 0 && imageIndex < imageList.Images.Count)
+                        {
+                            Image thumbnail = imageList.Images[imageIndex];
+                            int imgX = panelWidth - 53;
+                            int imgY = y + (itemHeight - 48) / 2;
+                            e.Graphics.DrawImage(thumbnail, imgX, imgY, 48, 48);
+                            textWidth = panelWidth - 65;
+                        }
+                    }
+                    catch { }
+                }
+
+                // 給製文字（左對齊）
+                Rectangle textRect = new Rectangle(5, y + 5, textWidth, itemHeight - 10);
+                TextRenderer.DrawText(e.Graphics, item.ToString(), listPanel.Font, textRect, 
+                    textColor, TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.WordBreak);
+
+                y += itemHeight;
+            }
+        }   listPanel.Invalidate();
+        }
+
+        private void ListPanel_MouseDown(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
             {
@@ -412,7 +313,94 @@ namespace MyClipboard
             }
         }
 
-        private void TitleBar_MouseMove(object sender, MouseEventArgs e)
+        private void ListPanel_MouseClick(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Right)
+            {
+                int itemIndex = GetItemIndexAtPoint(e.Location);
+                if (itemIndex >= 0)
+                {
+                    listContextMenu.Show(listPanel, e.Location);
+                }
+                else
+                {
+                    // 空白处也显示菜单
+                    listContextMenu.Show(listPanel, e.Location);
+                }
+            }
+        }
+
+        private void ListPanel_MouseDoubleClick(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                int itemIndex = GetItemIndexAtPoint(e.Location);
+                if (itemIndex >= 0 && itemIndex < clipboardHistory.Count)
+                {
+                    PasteItem(clipboardHistory[itemIndex]);
+                }
+            }
+        }
+
+        private int GetItemIndexAtPoint(Point point)
+        {
+            int y = -scrollOffset;
+            for (int i = 0; i < clipboardHistory.Count && i < itemHeights.Count; i++)
+            {
+                int itemHeight = itemHeights[i];
+                if (point.Y >= y && point.Y < y + itemHeight)
+                {
+                    return i;
+                }
+                y += itemHeight;
+            }
+            return -1;
+        }
+
+        private int GetImageIndex(int itemIndex)
+        {
+            int imageIndex = 0;
+            for (int i = 0; i < itemIndex && i < clipboardHistory.Count; i++)
+            {
+                if (clipboardHistory[i].Format == "Image" && clipboardHistory[i].Data != null)
+                {
+                    imageIndex++;
+                }
+            }
+            return imageIndex;
+        }
+
+        private int CalculateItemHeight(ClipboardItem item)
+        {
+            if (item.Format == "Image")
+            {
+                return MIN_ITEM_HEIGHT;
+            }
+
+            if (string.IsNullOrEmpty(item.Text))
+            {
+                return MIN_ITEM_HEIGHT;
+            }
+
+            // 計算文字需要的行數
+            string[] lines = item.Text.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.None);
+            int displayLines = Math.Min(lines.Length, MAX_TEXT_LINES);
+            
+            // 每行大約20px，再加上上下邊距
+            int textHeight = displayLines * 22 + 16;
+            return Math.Max(MIN_ITEM_HEIGHT, textHeight);
+        }
+
+        private void Form_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                isDragging = true;
+                dragStartPoint = e.Location;
+            }
+        }
+
+        private void Form_MouseMove(object sender, MouseEventArgs e)
         {
             if (isDragging)
             {
@@ -421,12 +409,12 @@ namespace MyClipboard
             }
         }
 
-        private void TitleBar_MouseUp(object sender, MouseEventArgs e)
+        private void Form_MouseUp(object sender, MouseEventArgs e)
         {
             if (isDragging)
             {
                 isDragging = false;
-                SaveSettings();
+                SaveWindowPosition();
             }
         }
 
@@ -434,18 +422,18 @@ namespace MyClipboard
         {
             if (e.Button == MouseButtons.Left)
             {
-                this.BeginInvoke(new Action(() => {
-                    if (this.Visible)
-                    {
-                        this.Hide();
-                    }
-                    else
-                    {
-                        this.Show();
-                        this.Activate();
-                        this.Focus();
-                    }
-                }));
+                // 使用明確的狀態切換
+                bool wasVisible = this.Visible;
+                if (wasVisible)
+                {
+                    this.Hide();
+                }
+                else
+                {
+                    this.Show();
+                    this.Activate();
+                    this.BringToFront();
+                }
             }
         }
 
@@ -468,6 +456,7 @@ namespace MyClipboard
 
         private void ClipboardMonitor_ClipboardChanged(object sender, EventArgs e)
         {
+            // 延遲一下確保剪貼板數據已經準備好
             System.Threading.Thread.Sleep(50);
             CaptureCurrentClipboard();
         }
@@ -489,6 +478,7 @@ namespace MyClipboard
                 item.Time = DateTime.Now;
                 bool hasData = false;
 
+                // 優先處理文本
                 if (Clipboard.ContainsData(DataFormats.UnicodeText))
                 {
                     string text = Clipboard.GetText(TextDataFormat.UnicodeText);
@@ -546,6 +536,7 @@ namespace MyClipboard
                 if (!hasData)
                     return;
 
+                // 避免重複
                 if (clipboardHistory.Count > 0)
                 {
                     var last = clipboardHistory[0];
@@ -555,43 +546,81 @@ namespace MyClipboard
 
                 clipboardHistory.Insert(0, item);
                 
+                // 在UI線程中更新界面
                 if (this.InvokeRequired)
                 {
                     this.Invoke(new Action(() => {
-                        RefreshCards();
+                        RefreshListView();
                         SaveHistory();
                     }));
                 }
                 else
                 {
-                    RefreshCards();
+                    RefreshListView();
                     SaveHistory();
                 }
             }
-            catch { }
+            catch
+            {
+                // 剪貼板訪問失敗時忽略
+            }
         }
 
-        private void RefreshCards()
+        private void RefreshListView()
         {
-            flowPanel.SuspendLayout();
-            flowPanel.Controls.Clear();
+            // 重新計算所有項目高度
+            itemHeights.Clear();
+            imageList.Images.Clear();
             
             foreach (var item in clipboardHistory)
             {
-                ClipboardCard card = new ClipboardCard(item, isDarkTheme);
-                card.OnDoubleClickItem += (s, e) => PasteItem(item);
-                card.OnCopyRequested += (s, e) => CopyItem(item);
-                card.OnDeleteRequested += (s, e) => DeleteItem(item);
-                flowPanel.Controls.Add(card);
+                itemHeights.Add(CalculateItemHeight(item));
+                
+                // 為圖片添加縮略圖
+                if (item.Format == "Image" && item.Data != null)
+                {
+                    try
+                    {
+                        using (MemoryStream ms = new MemoryStream(item.Data))
+                        {
+                            Image img = Image.FromStream(ms);
+                            Image thumbnail = CreateThumbnail(img, 48, 48);
+                            imageList.Images.Add(thumbnail);
+                        }
+                    }
+                    catch { }
+                }
             }
             
-            flowPanel.ResumeLayout();
+            listPanel.Invalidate();
+        }
+
+        private Image CreateThumbnail(Image image, int width, int height)
+        {
+            double ratioX = (double)width / image.Width;
+            double ratioY = (double)height / image.Height;
+            double ratio = Math.Min(ratioX, ratioY);
+
+            int newWidth = (int)(image.Width * ratio);
+            int newHeight = (int)(image.Height * ratio);
+
+            Bitmap newImage = new Bitmap(width, height);
+            using (Graphics g = Graphics.FromImage(newImage))
+            {
+                g.Clear(Color.Transparent);
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                int x = (width - newWidth) / 2;
+                int y = (height - newHeight) / 2;
+                g.DrawImage(image, x, y, newWidth, newHeight);
+            }
+            return newImage;
         }
 
         private void PasteItem(ClipboardItem item)
         {
             try
             {
+                // 设置剪贴板内容
                 if (item.Format == "Text")
                 {
                     Clipboard.SetText(item.Text);
@@ -615,13 +644,17 @@ namespace MyClipboard
                     }
                 }
 
+                // 隐藏窗口
                 this.Hide();
+
+                // 等待一下让窗口完全隐藏
                 Thread.Sleep(100);
 
-                keybd_event(0x11, 0, 0, UIntPtr.Zero);
-                keybd_event(0x56, 0, 0, UIntPtr.Zero);
-                keybd_event(0x56, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
-                keybd_event(0x11, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                // 模拟 Ctrl+V 粘贴
+                keybd_event(0x11, 0, 0, UIntPtr.Zero); // Ctrl down
+                keybd_event(0x56, 0, 0, UIntPtr.Zero); // V down
+                keybd_event(0x56, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); // V up
+                keybd_event(0x11, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); // Ctrl up
             }
             catch (Exception ex)
             {
@@ -629,44 +662,53 @@ namespace MyClipboard
             }
         }
 
-        private void CopyItem(ClipboardItem item)
+        private void CopyItem_Click(object sender, EventArgs e)
         {
-            try
+            // 由於不再使用ListView，需要其他方式選擇項目
+            // 暫時簡化，只處理最新項目
+            if (clipboardHistory.Count > 0)
             {
-                if (item.Format == "Text")
+                ClipboardItem item = clipboardHistory[0];
+                try
                 {
-                    Clipboard.SetText(item.Text);
-                }
-                else if (item.Format == "RTF")
-                {
-                    string rtf = Encoding.UTF8.GetString(item.Data);
-                    Clipboard.SetData(DataFormats.Rtf, rtf);
-                }
-                else if (item.Format == "HTML")
-                {
-                    string html = Encoding.UTF8.GetString(item.Data);
-                    Clipboard.SetData(DataFormats.Html, html);
-                }
-                else if (item.Format == "Image")
-                {
-                    using (MemoryStream ms = new MemoryStream(item.Data))
+                    if (item.Format == "Text")
                     {
-                        Image img = Image.FromStream(ms);
-                        Clipboard.SetImage(img);
+                        Clipboard.SetText(item.Text);
+                    }
+                    else if (item.Format == "RTF")
+                    {
+                        string rtf = Encoding.UTF8.GetString(item.Data);
+                        Clipboard.SetData(DataFormats.Rtf, rtf);
+                    }
+                    else if (item.Format == "HTML")
+                    {
+                        string html = Encoding.UTF8.GetString(item.Data);
+                        Clipboard.SetData(DataFormats.Html, html);
+                    }
+                    else if (item.Format == "Image")
+                    {
+                        using (MemoryStream ms = new MemoryStream(item.Data))
+                        {
+                            Image img = Image.FromStream(ms);
+                            Clipboard.SetImage(img);
+                        }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("複製失敗: " + ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                catch (Exception ex)
+                {
+                    MessageBox.Show("複製失敗: " + ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
         }
 
-        private void DeleteItem(ClipboardItem item)
+        private void DeleteItem_Click(object sender, EventArgs e)
         {
-            clipboardHistory.Remove(item);
-            RefreshCards();
-            SaveHistory();
+            if (clipboardHistory.Count > 0)
+            {
+                clipboardHistory.RemoveAt(0);
+                RefreshListView();
+                SaveHistory();
+            }
         }
 
         private void ClearAll_Click(object sender, EventArgs e)
@@ -683,35 +725,99 @@ namespace MyClipboard
             if (result == DialogResult.Yes)
             {
                 clipboardHistory.Clear();
-                RefreshCards();
+                scrollOffset = 0;
+                RefreshListView();
                 SaveHistory();
             }
+        }
+
+        private void SaveWindowPosition()
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(settingsPath);
+                if (!Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+
+                using (FileStream fs = new FileStream(settingsPath, FileMode.Create))
+                using (BinaryWriter writer = new BinaryWriter(fs))
+                {
+                    writer.Write(this.Location.X);
+                    writer.Write(this.Location.Y);
+                    writer.Write(isDarkTheme);
+                }
+            }
+            catch { }
+        }
+        
+        private void SaveSettings()
+        {
+            SaveWindowPosition();
+        }
+
+        private void LoadSettings()
+        {
+            try
+            {
+                if (File.Exists(settingsPath))
+                {
+                    using (FileStream fs = new FileStream(settingsPath, FileMode.Open))
+                    using (BinaryReader reader = new BinaryReader(fs))
+                    {
+                        int x = reader.ReadInt32();
+                        int y = reader.ReadInt32();
+                        this.Location = new Point(x, y);
+                        
+                        if (fs.Position < fs.Length)
+                        {
+                            isDarkTheme = reader.ReadBoolean();
+                        }
+                        return;
+                    }
+                }
+            }
+            catch { }
+            
+            // 如果沒有保存的設置，默認居中和深色主題
+            this.StartPosition = FormStartPosition.CenterScreen;
+            isDarkTheme = true;
         }
 
         private void ApplyTheme()
         {
             if (isDarkTheme)
             {
-                bgColor = Color.FromArgb(30, 30, 30);
-                titleBarColor = Color.FromArgb(37, 37, 38);
+                bgColor1 = Color.FromArgb(37, 37, 38);
+                bgColor2 = Color.FromArgb(45, 45, 48);
                 textColor = Color.White;
                 borderColor = Color.FromArgb(63, 63, 70);
-                this.BackColor = borderColor;
-                containerPanel.BackColor = bgColor;
-                flowPanel.BackColor = bgColor;
+                this.BackColor = Color.FromArgb(63, 63, 70);
+                if (listPanel != null)
+                {
+                    listPanel.BackColor = Color.FromArgb(30, 30, 30);
+                    listPanel.ForeColor = Color.White;
+                }
             }
             else
             {
-                bgColor = Color.FromArgb(245, 245, 245);
-                titleBarColor = Color.FromArgb(220, 220, 220);
+                bgColor1 = Color.FromArgb(245, 245, 245);
+                bgColor2 = Color.FromArgb(255, 255, 255);
                 textColor = Color.Black;
                 borderColor = Color.FromArgb(180, 180, 180);
-                this.BackColor = borderColor;
-                containerPanel.BackColor = bgColor;
-                flowPanel.BackColor = bgColor;
+                this.BackColor = Color.FromArgb(180, 180, 180);
+                if (listPanel != null)
+                {
+                    listPanel.BackColor = Color.FromArgb(250, 250, 250);
+                    listPanel.ForeColor = Color.Black;
+                }
             }
             
-            RefreshCards();
+            if (listPanel != null)
+            {
+                listPanel.Invalidate();
+            }
         }
 
         private void SaveHistory()
@@ -746,7 +852,10 @@ namespace MyClipboard
                     }
                 }
             }
-            catch { }
+            catch
+            {
+                // 保存失败时忽略
+            }
         }
 
         private void LoadHistory()
@@ -777,57 +886,12 @@ namespace MyClipboard
                     }
                 }
 
-                RefreshCards();
+                RefreshListView();
             }
-            catch { }
-        }
-
-        private void SaveSettings()
-        {
-            try
+            catch
             {
-                string dir = Path.GetDirectoryName(settingsPath);
-                if (!Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-
-                using (FileStream fs = new FileStream(settingsPath, FileMode.Create))
-                using (BinaryWriter writer = new BinaryWriter(fs))
-                {
-                    writer.Write(this.Location.X);
-                    writer.Write(this.Location.Y);
-                    writer.Write(isDarkTheme);
-                }
+                // 加载失败时忽略
             }
-            catch { }
-        }
-
-        private void LoadSettings()
-        {
-            try
-            {
-                if (File.Exists(settingsPath))
-                {
-                    using (FileStream fs = new FileStream(settingsPath, FileMode.Open))
-                    using (BinaryReader reader = new BinaryReader(fs))
-                    {
-                        int x = reader.ReadInt32();
-                        int y = reader.ReadInt32();
-                        this.Location = new Point(x, y);
-                        
-                        if (fs.Position < fs.Length)
-                        {
-                            isDarkTheme = reader.ReadBoolean();
-                        }
-                        return;
-                    }
-                }
-            }
-            catch { }
-            
-            this.StartPosition = FormStartPosition.CenterScreen;
-            isDarkTheme = true;
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -856,6 +920,10 @@ namespace MyClipboard
                 if (clipboardMonitor != null)
                 {
                     clipboardMonitor.Dispose();
+                }
+                if (imageList != null)
+                {
+                    imageList.Dispose();
                 }
             }
             base.Dispose(disposing);
