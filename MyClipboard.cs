@@ -60,8 +60,8 @@ namespace MyClipboard
         {
             if (!string.IsNullOrEmpty(Text))
             {
-                string preview = Text.Length > 80 ? Text.Substring(0, 80) + "..." : Text;
-                preview = preview.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ");
+                // 最多显示160个字符（大约4行）
+                string preview = Text.Length > 160 ? Text.Substring(0, 160) + "..." : Text;
                 return preview;
             }
             return Format;
@@ -85,7 +85,7 @@ namespace MyClipboard
         private bool isDarkTheme = true;
         private Color bgColor1, bgColor2, textColor, borderColor;
         private int scrollOffset = 0;
-        private const int ITEM_HEIGHT = 50;
+        private const int ITEM_HEIGHT = 70;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -152,17 +152,15 @@ namespace MyClipboard
             contentPanel.MouseMove += Form_MouseMove;
             contentPanel.MouseUp += Form_MouseUp;
             this.Controls.Add(contentPanel);
-
+            
             // ImageList for thumbnails
             imageList = new ImageList();
-            imageList.ImageSize = new Size(48, 48);
-            imageList.ColorDepth = ColorDepth.Depth32Bit;
-            
-            largeImageList = new ImageList();
+            imageList.ImageSize = new Size(60, 60);
+            imageList.ColorDepth = ColorDepth.Depth32Bit;            largeImageList = new ImageList();
             largeImageList.ImageSize = new Size(48, 48);
             largeImageList.ColorDepth = ColorDepth.Depth32Bit;
 
-            // ListView設置 - 使用OwnerDraw自繪
+                        // ListView設定 - 使用OwnerDraw自繪
             listView = new ListView();
             listView.Dock = DockStyle.Fill;
             listView.View = View.Details;
@@ -170,7 +168,7 @@ namespace MyClipboard
             listView.BackColor = Color.FromArgb(30, 30, 30);
             listView.ForeColor = Color.White;
             listView.BorderStyle = BorderStyle.None;
-            listView.Font = new Font("Microsoft YaHei UI", 11F);
+            listView.Font = new Font("Microsoft YaHei UI", 12F);
             listView.HeaderStyle = ColumnHeaderStyle.None;
             listView.Columns.Add("", 398);
             listView.OwnerDraw = true;
@@ -179,9 +177,9 @@ namespace MyClipboard
             listView.MouseWheel += ListView_MouseWheel;
             listView.DoubleClick += ListView_DoubleClick;
             listView.MouseClick += ListView_MouseClick;
-            listView.MouseDown += Form_MouseDown;
-            listView.MouseMove += Form_MouseMove;
-            listView.MouseUp += Form_MouseUp;
+            listView.MouseDown += ListView_MouseDown;
+            listView.MouseMove += ListView_MouseMove;
+            listView.MouseUp += ListView_MouseUp;
             contentPanel.Controls.Add(listView);
 
             // 右鍵選單
@@ -265,10 +263,10 @@ namespace MyClipboard
             ClipboardItem item = e.Item.Tag as ClipboardItem;
             if (item == null) return;
 
-            // 給製文字（左對齊）
-            Rectangle textRect = new Rectangle(e.Bounds.X + 5, e.Bounds.Y, e.Bounds.Width - 60, e.Bounds.Height);
+            // 給製文字（左對齊，支持多行）
+            Rectangle textRect = new Rectangle(e.Bounds.X + 5, e.Bounds.Y + 5, e.Bounds.Width - 75, e.Bounds.Height - 10);
             TextRenderer.DrawText(e.Graphics, item.ToString(), listView.Font, textRect, 
-                textColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                textColor, TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.WordBreak);
 
             // 給製圖片（右對齊）
             if (item.Format == "Image" && item.Data != null && e.Item.ImageIndex >= 0)
@@ -276,9 +274,9 @@ namespace MyClipboard
                 try
                 {
                     Image thumbnail = imageList.Images[e.Item.ImageIndex];
-                    int imgX = e.Bounds.Right - 53;
-                    int imgY = e.Bounds.Y + (e.Bounds.Height - 48) / 2;
-                    e.Graphics.DrawImage(thumbnail, imgX, imgY, 48, 48);
+                    int imgX = e.Bounds.Right - 65;
+                    int imgY = e.Bounds.Y + (e.Bounds.Height - 60) / 2;
+                    e.Graphics.DrawImage(thumbnail, imgX, imgY, 60, 60);
                 }
                 catch { }
             }
@@ -303,6 +301,35 @@ namespace MyClipboard
             scrollOffset = Math.Max(0, Math.Min(scrollOffset, maxScroll));
             
             RefreshListView();
+        }
+
+        private void ListView_MouseDown(object sender, MouseEventArgs e)
+        {
+            // 如果点击的是空白区域，支持拖动
+            ListViewItem item = listView.GetItemAt(e.X, e.Y);
+            if (item == null && e.Button == MouseButtons.Left)
+            {
+                isDragging = true;
+                dragStartPoint = e.Location;
+            }
+        }
+
+        private void ListView_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (isDragging)
+            {
+                Point currentScreenPos = Control.MousePosition;
+                this.Location = new Point(currentScreenPos.X - dragStartPoint.X, currentScreenPos.Y - dragStartPoint.Y);
+            }
+        }
+
+        private void ListView_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (isDragging)
+            {
+                isDragging = false;
+                SaveWindowPosition();
+            }
         }
 
         private void Form_MouseDown(object sender, MouseEventArgs e)
@@ -336,15 +363,19 @@ namespace MyClipboard
         {
             if (e.Button == MouseButtons.Left)
             {
-                if (this.Visible)
-                {
-                    this.Hide();
-                }
-                else
-                {
-                    this.Show();
-                    this.Activate();
-                }
+                // 使用BeginInvoke延迟执行，避免与系统事件冲突
+                this.BeginInvoke(new Action(() => {
+                    if (this.Visible)
+                    {
+                        this.Hide();
+                    }
+                    else
+                    {
+                        this.Show();
+                        this.Activate();
+                        this.Focus();
+                    }
+                }));
             }
         }
 
@@ -502,7 +533,7 @@ namespace MyClipboard
                         using (MemoryStream ms = new MemoryStream(item.Data))
                         {
                             Image img = Image.FromStream(ms);
-                            Image thumbnail = CreateThumbnail(img, 48, 48);
+                            Image thumbnail = CreateThumbnail(img, 60, 60);
                             imageList.Images.Add(thumbnail);
                             lvi.ImageIndex = imageIndex;
                             imageIndex++;
