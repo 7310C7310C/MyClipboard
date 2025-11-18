@@ -333,10 +333,63 @@ namespace MyClipboard
             this.BringToFront();
             this.TopMost = true;
             
+            // 创建开机自启动快捷方式
+            CreateStartupShortcut();
+            
             // 首次運行提示
             if (firstRun)
             {
                 ShowFirstRunTip();
+            }
+        }
+        
+        private void CreateStartupShortcut()
+        {
+            try
+            {
+                string startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+                string shortcutPath = Path.Combine(startupFolder, "MyClipboard.lnk");
+                
+                // 如果快捷方式已存在，检查是否指向当前exe
+                if (File.Exists(shortcutPath))
+                {
+                    // 简单检查：如果快捷方式存在就跳过（避免每次启动都重建）
+                    return;
+                }
+                
+                // 使用 VBScript 创建快捷方式（.NET 4.0 兼容方案）
+                string exePath = Application.ExecutablePath;
+                string vbsPath = Path.Combine(Path.GetTempPath(), "CreateShortcut.vbs");
+                
+                string vbsScript = string.Format(
+                    "Set oWS = WScript.CreateObject(\"WScript.Shell\")\n" +
+                    "sLinkFile = \"{0}\"\n" +
+                    "Set oLink = oWS.CreateShortcut(sLinkFile)\n" +
+                    "oLink.TargetPath = \"{1}\"\n" +
+                    "oLink.WorkingDirectory = \"{2}\"\n" +
+                    "oLink.Description = \"MyClipboard 剪贴板管理器\"\n" +
+                    "oLink.Save",
+                    shortcutPath,
+                    exePath,
+                    Path.GetDirectoryName(exePath)
+                );
+                
+                File.WriteAllText(vbsPath, vbsScript, Encoding.Default);
+                
+                // 执行 VBScript
+                System.Diagnostics.Process process = new System.Diagnostics.Process();
+                process.StartInfo.FileName = "wscript.exe";
+                process.StartInfo.Arguments = "\"" + vbsPath + "\"";
+                process.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
+                process.Start();
+                process.WaitForExit(3000); // 最多等待3秒
+                
+                // 清理临时文件
+                try { File.Delete(vbsPath); } catch { }
+            }
+            catch
+            {
+                // 创建快捷方式失败时静默忽略
             }
         }
 
@@ -1063,11 +1116,12 @@ namespace MyClipboard
 
             Label messageLabel = new Label();
             messageLabel.Text = "歡迎使用 MyClipboard！\n\n" +
-                "快捷鍵：Ctrl + Alt + X 顯示 / 隱藏界面\n" +
-                "雙擊記錄可直接粘貼";
+                "快捷鍵：Ctrl + Alt + X 顯示 / 隱藏界面；\n" +
+                "雙擊記錄可直接粘貼。";
             messageLabel.AutoSize = false;
             messageLabel.Size = new Size(360, 120);
             messageLabel.Location = new Point(20, 20);
+            messageLabel.Font = new Font("Consolas", 10F);
             tipForm.Controls.Add(messageLabel);
 
             CheckBox dontShowCheckbox = new CheckBox();
