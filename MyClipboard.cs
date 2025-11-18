@@ -156,21 +156,21 @@ namespace MyClipboard
             // 事件處理
             this.MouseEnter += (s, e) => { isHovered = true; this.BackColor = hoverColor; };
             this.MouseLeave += (s, e) => { isHovered = false; this.BackColor = normalColor; };
-            this.DoubleClick += (s, e) => OnDoubleClickItem?.Invoke(this, EventArgs.Empty);
+            this.DoubleClick += (s, e) => { if (OnDoubleClickItem != null) OnDoubleClickItem.Invoke(this, EventArgs.Empty); };
             
             textLabel.MouseEnter += (s, e) => { isHovered = true; this.BackColor = hoverColor; };
             textLabel.MouseLeave += (s, e) => { isHovered = false; this.BackColor = normalColor; };
-            textLabel.DoubleClick += (s, e) => OnDoubleClickItem?.Invoke(this, EventArgs.Empty);
+            textLabel.DoubleClick += (s, e) => { if (OnDoubleClickItem != null) OnDoubleClickItem.Invoke(this, EventArgs.Empty); };
             
             timeLabel.MouseEnter += (s, e) => { isHovered = true; this.BackColor = hoverColor; };
             timeLabel.MouseLeave += (s, e) => { isHovered = false; this.BackColor = normalColor; };
-            timeLabel.DoubleClick += (s, e) => OnDoubleClickItem?.Invoke(this, EventArgs.Empty);
+            timeLabel.DoubleClick += (s, e) => { if (OnDoubleClickItem != null) OnDoubleClickItem.Invoke(this, EventArgs.Empty); };
             
             if (imageBox != null)
             {
                 imageBox.MouseEnter += (s, e) => { isHovered = true; this.BackColor = hoverColor; };
                 imageBox.MouseLeave += (s, e) => { isHovered = false; this.BackColor = normalColor; };
-                imageBox.DoubleClick += (s, e) => OnDoubleClickItem?.Invoke(this, EventArgs.Empty);
+                imageBox.DoubleClick += (s, e) => { if (OnDoubleClickItem != null) OnDoubleClickItem.Invoke(this, EventArgs.Empty); };
             }
             
             // 右鍵菜單
@@ -179,11 +179,11 @@ namespace MyClipboard
             menu.ForeColor = textColor;
             
             ToolStripMenuItem copyItem = new ToolStripMenuItem("複製");
-            copyItem.Click += (s, e) => OnCopyRequested?.Invoke(this, EventArgs.Empty);
+            copyItem.Click += (s, e) => { if (OnCopyRequested != null) OnCopyRequested.Invoke(this, EventArgs.Empty); };
             menu.Items.Add(copyItem);
             
             ToolStripMenuItem deleteItem = new ToolStripMenuItem("刪除");
-            deleteItem.Click += (s, e) => OnDeleteRequested?.Invoke(this, EventArgs.Empty);
+            deleteItem.Click += (s, e) => { if (OnDeleteRequested != null) OnDeleteRequested.Invoke(this, EventArgs.Empty); };
             menu.Items.Add(deleteItem);
             
             this.ContextMenuStrip = menu;
