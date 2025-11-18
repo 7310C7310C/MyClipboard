@@ -170,7 +170,7 @@ namespace MyClipboard
             listPanel = new Panel();
             listPanel.Dock = DockStyle.Fill;
             listPanel.BackColor = Color.FromArgb(30, 30, 30);
-            listPanel.Font = new Font("Consolas", 9F);
+            listPanel.Font = new Font("Consolas", 10F);
             // 啟用雙緩衝減少閃爍
             typeof(Panel).InvokeMember("DoubleBuffered",
                 System.Reflection.BindingFlags.SetProperty | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
@@ -231,10 +231,10 @@ namespace MyClipboard
 
             // 右鍵選單
             listContextMenu = new ContextMenuStrip();
+            listContextMenu.Items.Add("收藏", null, ToggleFavorite_Click);
+            listContextMenu.Items.Add(new ToolStripSeparator());
             listContextMenu.Items.Add("複製", null, CopyItem_Click);
             listContextMenu.Items.Add("刪除", null, DeleteItem_Click);
-            listContextMenu.Items.Add(new ToolStripSeparator());
-            listContextMenu.Items.Add("收藏", null, ToggleFavorite_Click);
             listContextMenu.Items.Add(new ToolStripSeparator());
             listContextMenu.Items.Add("清空", null, ClearAll_Click);
             listContextMenu.Opening += ListContextMenu_Opening;
@@ -281,6 +281,20 @@ namespace MyClipboard
                 Application.Exit();
             });
             trayIcon.ContextMenuStrip = trayMenu;
+            
+            // 左键点击托盘图标也显示菜单
+            trayIcon.MouseClick += (s, ev) => {
+                if (ev.Button == MouseButtons.Left)
+                {
+                    // 使用反射调用显示菜单的内部方法
+                    System.Reflection.MethodInfo mi = typeof(NotifyIcon).GetMethod("ShowContextMenu",
+                        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                    if (mi != null)
+                    {
+                        mi.Invoke(trayIcon, null);
+                    }
+                }
+            };
 
             // 尝试加载自定义图标
             try
@@ -574,6 +588,9 @@ namespace MyClipboard
             Point mousePos = listPanel.PointToClient(Control.MousePosition);
             int itemIndex = GetItemIndexAtPoint(mousePos);
             
+            // 在收藏界面隐藏"清空"选项
+            listContextMenu.Items[5].Visible = !showingFavorites;
+            
             if (itemIndex >= 0)
             {
                 List<ClipboardItem> displayList = showingFavorites 
@@ -583,8 +600,8 @@ namespace MyClipboard
                 if (itemIndex < displayList.Count)
                 {
                     bool isFavorite = displayList[itemIndex].IsFavorite;
-                    // 更新收藏菜单项的文字
-                    listContextMenu.Items[3].Text = isFavorite ? "取消收藏" : "收藏";
+                    // 更新收藏菜单项的文字（索引0）
+                    listContextMenu.Items[0].Text = isFavorite ? "取消收藏" : "收藏";
                 }
             }
         }
