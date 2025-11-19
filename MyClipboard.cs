@@ -149,6 +149,7 @@ namespace MyClipboard
             this.StartPosition = FormStartPosition.CenterScreen;
             this.ShowInTaskbar = false;
             this.TopMost = true;
+            this.KeyPreview = true;
             
             // 窗體拖動事件
             this.MouseDown += Form_MouseDown;
@@ -281,7 +282,7 @@ namespace MyClipboard
             // 搜索框清除按钮
             searchClearButton = new Button();
             searchClearButton.Text = "✕";
-            searchClearButton.Size = new Size(30, SEARCH_BOX_HEIGHT - 4);
+            searchClearButton.Width = 35;
             searchClearButton.Dock = DockStyle.Right;
             searchClearButton.FlatStyle = FlatStyle.Flat;
             searchClearButton.FlatAppearance.BorderSize = 0;
@@ -401,6 +402,7 @@ namespace MyClipboard
             // 窗体事件
             this.Load += MainForm_Load;
             this.Deactivate += MainForm_Deactivate;
+            this.KeyDown += MainForm_KeyDown;
         }
 
         private void MainForm_Load(object sender, EventArgs e)
@@ -422,6 +424,24 @@ namespace MyClipboard
         {
             // 不自动隱藏，保持置顶
             // this.Hide();
+        }
+        
+        private void MainForm_KeyDown(object sender, KeyEventArgs e)
+        {
+            // Ctrl+F 聚焦到搜索框
+            if (e.Control && e.KeyCode == Keys.F)
+            {
+                if (searchBox.Text == "搜索……")
+                {
+                    searchBox.ReadOnly = false;
+                    searchBox.Text = "";
+                    searchBox.ForeColor = isDarkTheme ? Color.White : Color.Black;
+                }
+                searchBox.Focus();
+                searchBox.SelectAll();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
         }
         
         private void SearchBox_TextChanged(object sender, EventArgs e)
