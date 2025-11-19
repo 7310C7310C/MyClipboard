@@ -267,7 +267,7 @@ namespace MyClipboard
             
             searchBox = new TextBox();
             searchBox.Dock = DockStyle.Fill;
-            searchBox.Font = new Font("微软雅黑", 15F);
+            searchBox.Font = new Font("微软雅黑", 16F);
             searchBox.ForeColor = Color.FromArgb(180, 210, 240);
             searchBox.Text = "搜索……";
             searchBox.BackColor = Color.FromArgb(0, 90, 158);
@@ -877,7 +877,7 @@ namespace MyClipboard
             
             // 切换视图时清空搜索
             searchBox.Text = "搜索……";
-            searchBox.ForeColor = Color.Gray;
+            searchBox.ForeColor = isDarkTheme ? Color.FromArgb(180, 210, 240) : Color.FromArgb(80, 80, 80);
             searchFilter = "";
             
             scrollOffset = 0;
@@ -1786,21 +1786,21 @@ namespace MyClipboard
                 }
                 if (searchBox != null && searchBox.Text != "搜索……")
                 {
-                    searchBox.BackColor = Color.FromArgb(210, 230, 255);
+                    searchBox.BackColor = Color.FromArgb(180, 210, 255);
                     searchBox.ForeColor = Color.Black;
                 }
                 else if (searchBox != null)
                 {
-                    searchBox.BackColor = Color.FromArgb(210, 230, 255);
+                    searchBox.BackColor = Color.FromArgb(180, 210, 255);
                     searchBox.ForeColor = Color.FromArgb(80, 80, 80);
                 }
                 if (searchPanel != null)
                 {
-                    searchPanel.BackColor = Color.FromArgb(210, 230, 255);
+                    searchPanel.BackColor = Color.FromArgb(180, 210, 255);
                 }
                 if (searchClearButton != null)
                 {
-                    searchClearButton.BackColor = Color.FromArgb(210, 230, 255);
+                    searchClearButton.BackColor = Color.FromArgb(180, 210, 255);
                     searchClearButton.ForeColor = Color.FromArgb(60, 60, 60);
                 }
             }
