@@ -876,6 +876,10 @@ namespace MyClipboard
             // 設置最小高度為60px，確保大量記錄時也好操作
             int scrollBarHeight = Math.Max(60, (listPanel.ClientSize.Height * listPanel.ClientSize.Height) / totalHeight);
             int scrollBarY = (scrollOffset * listPanel.ClientSize.Height) / totalHeight;
+            
+            // 确保滚动条不超出listPanel的范围
+            int maxScrollBarY = listPanel.ClientSize.Height - scrollBarHeight;
+            scrollBarY = Math.Max(0, Math.Min(scrollBarY, maxScrollBarY));
 
             scrollBarPanel.Height = scrollBarHeight;
             scrollBarPanel.Top = scrollBarY;
