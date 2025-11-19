@@ -327,6 +327,8 @@ namespace MyClipboard
             };
             
             trayMenu.Items.Add(themeMenuItem);
+            // 添加“關於”菜单项（与切換主題同组）
+            trayMenu.Items.Add("關於", null, About_Click);
             
             trayMenu.Items.Add(new ToolStripSeparator());
             trayMenu.Items.Add("退出", null, (s, ev) => {
@@ -764,10 +766,19 @@ namespace MyClipboard
                 
                 if (itemIndex < displayList.Count)
                 {
-                    bool isFavorite = displayList[itemIndex].IsFavorite;
+                    ClipboardItem item = displayList[itemIndex];
+                    bool isFavorite = item.IsFavorite;
                     // 更新收藏菜单项的文字（索引0）
                     listContextMenu.Items[0].Text = isFavorite ? "取消收藏" : "收藏";
+                    
+                    // 只有文本类型才显示"编辑"菜单项（索引2）
+                    listContextMenu.Items[2].Visible = (item.Format == "Text");
                 }
+            }
+            else
+            {
+                // 点击空白处，隐藏编辑菜单项
+                listContextMenu.Items[2].Visible = false;
             }
         }
 
@@ -1110,6 +1121,12 @@ namespace MyClipboard
                         editForm.MaximizeBox = true;
                         editForm.TopMost = true;
                         
+                        // 使用主程序的图标
+                        if (this.Icon != null)
+                        {
+                            editForm.Icon = this.Icon;
+                        }
+                        
                         TextBox editBox = new TextBox();
                         editBox.Multiline = true;
                         editBox.ScrollBars = ScrollBars.Both;
@@ -1316,7 +1333,7 @@ namespace MyClipboard
 
             Label messageLabel = new Label();
             messageLabel.Text = "歡迎使用 MyClipboard！\n\n" +
-                "快捷鍵：Ctrl + Alt + X 顯示 / 隱藏界面；\n" +
+                "快捷鍵：Ctrl + Alt + X 顯示 / 隱藏界面；\n\n" +
                 "雙擊記錄可直接粘貼。";
             messageLabel.AutoSize = false;
             messageLabel.Size = new Size(360, 120);
@@ -1345,6 +1362,11 @@ namespace MyClipboard
             tipForm.Controls.Add(okButton);
 
             tipForm.ShowDialog();
+        }
+
+        private void About_Click(object sender, EventArgs e)
+        {
+            MessageBox.Show("聯繫微信：676400126", "關於", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private void ApplyTheme()
