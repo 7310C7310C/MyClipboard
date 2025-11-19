@@ -89,7 +89,6 @@ namespace MyClipboard
         private TextBox searchBox;
         private ToolTip itemToolTip;
         private Point lastContextMenuPosition;
-        private System.Windows.Forms.Timer tooltipDelayTimer;
         private int pendingTooltipItemIndex = -1;
         private const int ITEM_HEIGHT = 60;
         private const int SEARCH_BOX_HEIGHT = 35;
@@ -176,14 +175,9 @@ namespace MyClipboard
             // ToolTip 初始化
             itemToolTip = new ToolTip();
             itemToolTip.AutoPopDelay = 5000;
-            itemToolTip.InitialDelay = 800;
+            itemToolTip.InitialDelay = 300;
             itemToolTip.ReshowDelay = 100;
             itemToolTip.ShowAlways = true;
-            
-            // ToolTip 延时定时器
-            tooltipDelayTimer = new System.Windows.Forms.Timer();
-            tooltipDelayTimer.Interval = 400;
-            tooltipDelayTimer.Tick += TooltipDelayTimer_Tick;
 
             // 清單面板（自繪）
             listPanel = new Panel();
@@ -288,6 +282,7 @@ namespace MyClipboard
             listContextMenu.Items.Add("複製", null, CopyItem_Click);
             listContextMenu.Items.Add("刪除", null, DeleteItem_Click);
             listContextMenu.Items.Add(new ToolStripSeparator());
+            listContextMenu.Items.Add("幫助", null, Help_Click);
             listContextMenu.Items.Add("清空", null, ClearAll_Click);
             listContextMenu.Opening += ListContextMenu_Opening;
 
@@ -424,41 +419,14 @@ namespace MyClipboard
         {
             int itemIndex = GetItemIndexAtPoint(e.Location);
             
-            if (itemIndex >= 0)
+            if (itemIndex >= 0 && itemIndex != pendingTooltipItemIndex)
             {
-                if (itemIndex != pendingTooltipItemIndex)
-                {
-                    // 鼠标移到新项目
-                    tooltipDelayTimer.Stop();
-                    itemToolTip.SetToolTip(listPanel, "");
-                    pendingTooltipItemIndex = itemIndex;
-                    tooltipDelayTimer.Start();
-                }
-                else if (!tooltipDelayTimer.Enabled)
-                {
-                    // 在同一项上且定时器未运行，重新启动
-                    tooltipDelayTimer.Start();
-                }
-            }
-            else
-            {
-                // 鼠标离开所有项目
-                tooltipDelayTimer.Stop();
-                itemToolTip.SetToolTip(listPanel, "");
-                pendingTooltipItemIndex = -1;
-            }
-        }
-        
-        private void TooltipDelayTimer_Tick(object sender, EventArgs e)
-        {
-            tooltipDelayTimer.Stop();
-            
-            if (pendingTooltipItemIndex >= 0)
-            {
+                pendingTooltipItemIndex = itemIndex;
+                
                 List<ClipboardItem> displayList = GetFilteredDisplayList();
-                if (pendingTooltipItemIndex < displayList.Count)
+                if (itemIndex < displayList.Count)
                 {
-                    ClipboardItem item = displayList[pendingTooltipItemIndex];
+                    ClipboardItem item = displayList[itemIndex];
                     string tooltipText = "";
                     
                     if (item.Format == "Image")
@@ -480,8 +448,14 @@ namespace MyClipboard
                     itemToolTip.SetToolTip(listPanel, tooltipText);
                 }
             }
+            else if (itemIndex < 0)
+            {
+                // 鼠标离开所有项目
+                itemToolTip.SetToolTip(listPanel, "");
+                pendingTooltipItemIndex = -1;
+            }
         }
-
+        
         private void ListPanel_Paint(object sender, PaintEventArgs e)
         {
             // 获取要显示的列表（支持搜索过滤）
@@ -587,7 +561,6 @@ namespace MyClipboard
             if (e.Button == MouseButtons.Right)
             {
                 // 右键点击时停止悬停提示，避免遮挡菜单
-                tooltipDelayTimer.Stop();
                 itemToolTip.SetToolTip(listPanel, "");
                 pendingTooltipItemIndex = -1;
                 
@@ -1386,6 +1359,53 @@ namespace MyClipboard
             this.TopMost = wasTopMost;
         }
 
+        private void Help_Click(object sender, EventArgs e)
+        {
+            // 临时取消主窗口置顶，避免遮挡弹窗
+            bool wasTopMost = this.TopMost;
+            this.TopMost = false;
+            
+            // 创建帮助对话框
+            Form helpForm = new Form();
+            helpForm.Text = "使用提示";
+            helpForm.Size = new Size(400, 220);
+            helpForm.StartPosition = FormStartPosition.CenterScreen;
+            helpForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+            helpForm.MaximizeBox = false;
+            helpForm.MinimizeBox = false;
+            helpForm.TopMost = true;
+            
+            // 使用主程序的图标
+            if (this.Icon != null)
+            {
+                helpForm.Icon = this.Icon;
+            }
+
+            Label messageLabel = new Label();
+            messageLabel.Text = "歡迎使用 MyClipboard！\n\n" +
+                "快捷鍵：Ctrl + Alt + X 顯示 / 隱藏界面；\n\n" +
+                "雙擊記錄可直接粘貼。";
+            messageLabel.AutoSize = false;
+            messageLabel.Size = new Size(360, 120);
+            messageLabel.Location = new Point(20, 20);
+            messageLabel.Font = new Font("Consolas", 10F);
+            helpForm.Controls.Add(messageLabel);
+
+            Button okButton = new Button();
+            okButton.Text = "確定";
+            okButton.Size = new Size(80, 30);
+            okButton.Location = new Point(160, 150);
+            okButton.Click += (s, ev) => {
+                helpForm.Close();
+            };
+            helpForm.Controls.Add(okButton);
+
+            helpForm.ShowDialog(this);
+            
+            // 恢复置顶状态
+            this.TopMost = wasTopMost;
+        }
+
         private void ApplyTheme()
         {
             if (isDarkTheme)
@@ -1587,10 +1607,6 @@ namespace MyClipboard
                 if (imageList != null)
                 {
                     imageList.Dispose();
-                }
-                if (tooltipDelayTimer != null)
-                {
-                    tooltipDelayTimer.Dispose();
                 }
             }
             base.Dispose(disposing);
