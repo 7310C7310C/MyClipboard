@@ -220,6 +220,7 @@ namespace MyClipboard
             favoritesButton.ForeColor = Color.White;
             favoritesButton.Font = new Font("Arial", 9F);
             favoritesButton.Cursor = Cursors.Hand;
+            favoritesButton.TabStop = false;
             favoritesButton.Click += FavoritesButton_Click;
             contentPanel.Controls.Add(favoritesButton);
             favoritesButton.BringToFront();
@@ -235,6 +236,7 @@ namespace MyClipboard
             minimizeButton.ForeColor = Color.White;
             minimizeButton.Font = new Font("Arial", 12F, FontStyle.Bold);
             minimizeButton.Cursor = Cursors.Hand;
+            minimizeButton.TabStop = false;
             minimizeButton.Click += MinimizeButton_Click;
             contentPanel.Controls.Add(minimizeButton);
             minimizeButton.BringToFront();
@@ -244,6 +246,7 @@ namespace MyClipboard
             searchPanel.Dock = DockStyle.Bottom;
             searchPanel.Height = SEARCH_BOX_HEIGHT;
             searchPanel.BackColor = Color.FromArgb(40, 40, 40);
+            searchPanel.Padding = new Padding(5, 5, 0, 5);
             contentPanel.Controls.Add(searchPanel);
             
             searchBox = new TextBox();
@@ -252,9 +255,9 @@ namespace MyClipboard
             searchBox.ForeColor = Color.Gray;
             searchBox.Text = "搜索……";
             searchBox.BackColor = Color.FromArgb(40, 40, 40);
-            searchBox.BorderStyle = BorderStyle.FixedSingle;
+            searchBox.BorderStyle = BorderStyle.None;
             searchBox.TextAlign = HorizontalAlignment.Left;
-            searchBox.Padding = new Padding(5);
+            searchBox.Multiline = true;
             searchBox.ReadOnly = true;
             searchBox.TextChanged += SearchBox_TextChanged;
             searchBox.KeyDown += SearchBox_KeyDown;
@@ -290,6 +293,7 @@ namespace MyClipboard
             searchClearButton.ForeColor = Color.White;
             searchClearButton.Font = new Font("Arial", 10F);
             searchClearButton.Cursor = Cursors.Hand;
+            searchClearButton.TabStop = false;
             searchClearButton.Visible = false;
             searchClearButton.Click += (s, ev) => {
                 searchBox.Text = "";
@@ -412,6 +416,9 @@ namespace MyClipboard
             this.Activate();
             this.BringToFront();
             this.TopMost = true;
+            
+            // 让列表面板获得焦点
+            listPanel.Focus();
             
             // 首次運行提示
             if (firstRun)
@@ -921,6 +928,8 @@ namespace MyClipboard
                 this.TopMost = true;
                 // 只重绘，不重建缩略图
                 listPanel.Invalidate();
+                // 让列表面板获得焦点
+                listPanel.Focus();
             }
         }
 
@@ -1022,6 +1031,8 @@ namespace MyClipboard
                     this.TopMost = true;
                     // 只重绘，不重建缩略图
                     listPanel.Invalidate();
+                    // 让列表面板获得焦点
+                    listPanel.Focus();
                 }
             }
             base.WndProc(ref m);
