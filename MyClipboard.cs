@@ -221,16 +221,9 @@ namespace MyClipboard
             favoritesButton.Cursor = Cursors.Hand;
             favoritesButton.TabStop = false;
             favoritesButton.Click += FavoritesButton_Click;
-            favoritesButton.PreviewKeyDown += (s, ev) => {
-                if (ev.KeyCode == Keys.Up || ev.KeyCode == Keys.Down || 
-                    ev.KeyCode == Keys.Left || ev.KeyCode == Keys.Right)
-                {
-                    ev.IsInputKey = true;
-                }
-            };
-            favoritesButton.KeyDown += (s, ev) => {
-                // 将键盘事件转发到主窗体处理
-                MainForm_KeyDown(this, ev);
+            favoritesButton.GotFocus += (s, ev) => {
+                // 按钮获得焦点时立即转移到 listPanel
+                listPanel.Focus();
             };
             contentPanel.Controls.Add(favoritesButton);
             favoritesButton.BringToFront();
@@ -248,16 +241,9 @@ namespace MyClipboard
             minimizeButton.Cursor = Cursors.Hand;
             minimizeButton.TabStop = false;
             minimizeButton.Click += MinimizeButton_Click;
-            minimizeButton.PreviewKeyDown += (s, ev) => {
-                if (ev.KeyCode == Keys.Up || ev.KeyCode == Keys.Down || 
-                    ev.KeyCode == Keys.Left || ev.KeyCode == Keys.Right)
-                {
-                    ev.IsInputKey = true;
-                }
-            };
-            minimizeButton.KeyDown += (s, ev) => {
-                // 将键盘事件转发到主窗体处理
-                MainForm_KeyDown(this, ev);
+            minimizeButton.GotFocus += (s, ev) => {
+                // 按钮获得焦点时立即转移到 listPanel
+                listPanel.Focus();
             };
             contentPanel.Controls.Add(minimizeButton);
             minimizeButton.BringToFront();
@@ -266,20 +252,20 @@ namespace MyClipboard
             searchPanel = new Panel();
             searchPanel.Dock = DockStyle.Bottom;
             searchPanel.Height = SEARCH_BOX_HEIGHT;
-            searchPanel.BackColor = Color.FromArgb(30, 30, 30);
+            searchPanel.BackColor = Color.FromArgb(0, 120, 215);
             contentPanel.Controls.Add(searchPanel);
             
             searchBox = new TextBox();
             searchBox.Dock = DockStyle.Fill;
-            searchBox.Font = new Font("微软雅黑", 9.5F);
-            searchBox.ForeColor = Color.Gray;
+            searchBox.Font = new Font("微软雅黑", 10F);
+            searchBox.ForeColor = Color.FromArgb(200, 230, 255);
             searchBox.Text = "搜索……";
-            searchBox.BackColor = Color.FromArgb(45, 45, 48);
+            searchBox.BackColor = Color.FromArgb(0, 120, 215);
             searchBox.BorderStyle = BorderStyle.None;
             searchBox.TextAlign = HorizontalAlignment.Left;
             searchBox.Multiline = true;
             searchBox.ReadOnly = true;
-            searchBox.Padding = new Padding(8, 8, 0, 0);
+            searchBox.Padding = new Padding(10, 9, 0, 0);
             searchBox.TextChanged += SearchBox_TextChanged;
             searchBox.KeyDown += SearchBox_KeyDown;
             searchBox.Enter += (s, ev) => {
@@ -296,7 +282,7 @@ namespace MyClipboard
                 if (string.IsNullOrWhiteSpace(searchBox.Text))
                 {
                     searchBox.Text = "搜索……";
-                    searchBox.ForeColor = Color.Gray;
+                    searchBox.ForeColor = isDarkTheme ? Color.FromArgb(200, 230, 255) : Color.FromArgb(100, 100, 100);
                     searchBox.ReadOnly = true;
                     searchClearButton.Visible = false;
                 }
@@ -306,13 +292,14 @@ namespace MyClipboard
             // 搜索框清除按钮
             searchClearButton = new Button();
             searchClearButton.Text = "✕";
-            searchClearButton.Width = 35;
+            searchClearButton.Width = 40;
             searchClearButton.Dock = DockStyle.Right;
             searchClearButton.FlatStyle = FlatStyle.Flat;
             searchClearButton.FlatAppearance.BorderSize = 0;
-            searchClearButton.BackColor = Color.FromArgb(45, 45, 48);
+            searchClearButton.BackColor = Color.FromArgb(0, 120, 215);
             searchClearButton.ForeColor = Color.White;
-            searchClearButton.Font = new Font("Arial", 10F);
+            searchClearButton.Font = new Font("Arial", 11F);
+            searchClearButton.TextAlign = ContentAlignment.MiddleCenter;
             searchClearButton.Cursor = Cursors.Hand;
             searchClearButton.TabStop = false;
             searchClearButton.Visible = false;
@@ -456,12 +443,6 @@ namespace MyClipboard
         
         private void MainForm_KeyDown(object sender, KeyEventArgs e)
         {
-            // 如果按钮有焦点，先移除焦点
-            if (favoritesButton.Focused || minimizeButton.Focused)
-            {
-                listPanel.Focus();
-            }
-            
             // 如果搜索框有焦点，只处理 Ctrl+F 和 Escape
             if (searchBox.Focused)
             {
@@ -1666,20 +1647,21 @@ namespace MyClipboard
                 }
                 if (searchBox != null && searchBox.Text != "搜索……")
                 {
-                    searchBox.BackColor = Color.FromArgb(45, 45, 48);
+                    searchBox.BackColor = Color.FromArgb(0, 120, 215);
                     searchBox.ForeColor = Color.White;
                 }
                 else if (searchBox != null)
                 {
-                    searchBox.BackColor = Color.FromArgb(45, 45, 48);
+                    searchBox.BackColor = Color.FromArgb(0, 120, 215);
+                    searchBox.ForeColor = Color.FromArgb(200, 230, 255);
                 }
                 if (searchPanel != null)
                 {
-                    searchPanel.BackColor = Color.FromArgb(30, 30, 30);
+                    searchPanel.BackColor = Color.FromArgb(0, 120, 215);
                 }
                 if (searchClearButton != null)
                 {
-                    searchClearButton.BackColor = Color.FromArgb(45, 45, 48);
+                    searchClearButton.BackColor = Color.FromArgb(0, 120, 215);
                     searchClearButton.ForeColor = Color.White;
                 }
             }
@@ -1712,21 +1694,22 @@ namespace MyClipboard
                 }
                 if (searchBox != null && searchBox.Text != "搜索……")
                 {
-                    searchBox.BackColor = Color.FromArgb(250, 250, 250);
+                    searchBox.BackColor = Color.FromArgb(230, 240, 250);
                     searchBox.ForeColor = Color.Black;
                 }
                 else if (searchBox != null)
                 {
-                    searchBox.BackColor = Color.FromArgb(250, 250, 250);
+                    searchBox.BackColor = Color.FromArgb(230, 240, 250);
+                    searchBox.ForeColor = Color.FromArgb(100, 100, 100);
                 }
                 if (searchPanel != null)
                 {
-                    searchPanel.BackColor = Color.FromArgb(250, 250, 250);
+                    searchPanel.BackColor = Color.FromArgb(230, 240, 250);
                 }
                 if (searchClearButton != null)
                 {
-                    searchClearButton.BackColor = Color.FromArgb(250, 250, 250);
-                    searchClearButton.ForeColor = Color.Black;
+                    searchClearButton.BackColor = Color.FromArgb(230, 240, 250);
+                    searchClearButton.ForeColor = Color.FromArgb(80, 80, 80);
                 }
             }
             
