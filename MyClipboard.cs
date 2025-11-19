@@ -195,7 +195,6 @@ namespace MyClipboard
             listPanel.MouseClick += ListPanel_MouseClick;
             listPanel.MouseDoubleClick += ListPanel_MouseDoubleClick;
             listPanel.MouseWheel += ListPanel_MouseWheel;
-            listPanel.MouseMove += ListPanel_MouseMove_ShowTooltip;
             contentPanel.Controls.Add(listPanel);
             
             // Material Design 滚动条
@@ -415,47 +414,6 @@ namespace MyClipboard
             listPanel.Invalidate();
         }
         
-        private void ListPanel_MouseMove_ShowTooltip(object sender, MouseEventArgs e)
-        {
-            int itemIndex = GetItemIndexAtPoint(e.Location);
-            
-            if (itemIndex >= 0 && itemIndex != pendingTooltipItemIndex)
-            {
-                pendingTooltipItemIndex = itemIndex;
-                
-                List<ClipboardItem> displayList = GetFilteredDisplayList();
-                if (itemIndex < displayList.Count)
-                {
-                    ClipboardItem item = displayList[itemIndex];
-                    string tooltipText = "";
-                    
-                    if (item.Format == "Image")
-                    {
-                        tooltipText = item.Text; // 图片尺寸信息
-                    }
-                    else if (!string.IsNullOrEmpty(item.Text))
-                    {
-                        // 显示前500个字符
-                        tooltipText = item.Text.Length > 500 
-                            ? item.Text.Substring(0, 500) + "..." 
-                            : item.Text;
-                    }
-                    else
-                    {
-                        tooltipText = item.Format;
-                    }
-                    
-                    itemToolTip.SetToolTip(listPanel, tooltipText);
-                }
-            }
-            else if (itemIndex < 0)
-            {
-                // 鼠标离开所有项目
-                itemToolTip.SetToolTip(listPanel, "");
-                pendingTooltipItemIndex = -1;
-            }
-        }
-        
         private void ListPanel_Paint(object sender, PaintEventArgs e)
         {
             // 获取要显示的列表（支持搜索过滤）
@@ -558,7 +516,48 @@ namespace MyClipboard
                 listPanel.Focus();
             }
             
-            if (e.Button == MouseButtons.Right)
+            if (e.Button == MouseButtons.Left)
+            {
+                // 左键单击显示提示
+                int itemIndex = GetItemIndexAtPoint(e.Location);
+                
+                if (itemIndex >= 0 && itemIndex != pendingTooltipItemIndex)
+                {
+                    pendingTooltipItemIndex = itemIndex;
+                    
+                    List<ClipboardItem> displayList = GetFilteredDisplayList();
+                    if (itemIndex < displayList.Count)
+                    {
+                        ClipboardItem item = displayList[itemIndex];
+                        string tooltipText = "";
+                        
+                        if (item.Format == "Image")
+                        {
+                            tooltipText = item.Text; // 图片尺寸信息
+                        }
+                        else if (!string.IsNullOrEmpty(item.Text))
+                        {
+                            // 显示前500个字符
+                            tooltipText = item.Text.Length > 500 
+                                ? item.Text.Substring(0, 500) + "..." 
+                                : item.Text;
+                        }
+                        else
+                        {
+                            tooltipText = item.Format;
+                        }
+                        
+                        itemToolTip.SetToolTip(listPanel, tooltipText);
+                    }
+                }
+                else if (itemIndex < 0)
+                {
+                    // 点击空白处，清除提示
+                    itemToolTip.SetToolTip(listPanel, "");
+                    pendingTooltipItemIndex = -1;
+                }
+            }
+            else if (e.Button == MouseButtons.Right)
             {
                 // 右键点击时停止悬停提示，避免遮挡菜单
                 itemToolTip.SetToolTip(listPanel, "");
@@ -753,15 +752,7 @@ namespace MyClipboard
                     bool isFavorite = item.IsFavorite;
                     // 更新收藏菜单项的文字（索引0）
                     listContextMenu.Items[0].Text = isFavorite ? "取消收藏" : "收藏";
-                    
-                    // 只有文本类型才显示"编辑"菜单项（索引2）
-                    listContextMenu.Items[2].Visible = (item.Format == "Text");
                 }
-            }
-            else
-            {
-                // 点击空白处，隐藏编辑菜单项
-                listContextMenu.Items[2].Visible = false;
             }
         }
 
@@ -1091,10 +1082,9 @@ namespace MyClipboard
                 {
                     ClipboardItem item = displayList[itemIndex];
                     
-                    // 只允许编辑文本类型
                     if (item.Format == "Text")
                     {
-                        // 创建编辑对话框
+                        // 文本类型：创建编辑对话框
                         Form editForm = new Form();
                         editForm.Text = "編輯內容";
                         editForm.Size = new Size(500, 400);
@@ -1148,9 +1138,31 @@ namespace MyClipboard
                         
                         editForm.ShowDialog(this);
                     }
-                    else
+                    else if (item.Format == "Image" && item.Data != null)
                     {
-                        MessageBox.Show("只能編輯文本類型的內容", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        // 图片类型：保存为临时文件并用外部程序打开
+                        try
+                        {
+                            string tempPath = Path.Combine(Path.GetTempPath(), "MyClipboard_" + DateTime.Now.Ticks + ".png");
+                            File.WriteAllBytes(tempPath, item.Data);
+                            
+                            // 尝试使用 Snipping Tool
+                            string snippingTool = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "SnippingTool.exe");
+                            
+                            if (File.Exists(snippingTool))
+                            {
+                                System.Diagnostics.Process.Start(snippingTool, "\""+tempPath+"\"");
+                            }
+                            else
+                            {
+                                // 如果没有 Snipping Tool，使用 Paint
+                                System.Diagnostics.Process.Start("mspaint.exe", "\""+tempPath+"\"");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show("打開編輯器失敗: " + ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
                     }
                 }
             }
