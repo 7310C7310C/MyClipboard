@@ -167,6 +167,7 @@ namespace MyClipboard
             contentPanel.MouseDown += Form_MouseDown;
             contentPanel.MouseMove += Form_MouseMove;
             contentPanel.MouseUp += Form_MouseUp;
+            contentPanel.KeyDown += MainForm_KeyDown;
             this.Controls.Add(contentPanel);
 
             // ImageList for thumbnails
@@ -191,6 +192,7 @@ namespace MyClipboard
             listPanel.MouseClick += ListPanel_MouseClick;
             listPanel.MouseDoubleClick += ListPanel_MouseDoubleClick;
             listPanel.MouseWheel += ListPanel_MouseWheel;
+            listPanel.KeyDown += MainForm_KeyDown;
             contentPanel.Controls.Add(listPanel);
             
             // Material Design 滚动条
@@ -203,6 +205,7 @@ namespace MyClipboard
             scrollBarPanel.MouseDown += ScrollBar_MouseDown;
             scrollBarPanel.MouseMove += ScrollBar_MouseMove;
             scrollBarPanel.MouseUp += ScrollBar_MouseUp;
+            scrollBarPanel.KeyDown += MainForm_KeyDown;
             contentPanel.Controls.Add(scrollBarPanel);
             scrollBarPanel.BringToFront();
             
@@ -225,6 +228,9 @@ namespace MyClipboard
                 // 按钮获得焦点时立即转移到 listPanel
                 listPanel.Focus();
             };
+            favoritesButton.KeyDown += (s, ev) => {
+                MainForm_KeyDown(this, ev);
+            };
             contentPanel.Controls.Add(favoritesButton);
             favoritesButton.BringToFront();
             
@@ -245,6 +251,9 @@ namespace MyClipboard
                 // 按钮获得焦点时立即转移到 listPanel
                 listPanel.Focus();
             };
+            minimizeButton.KeyDown += (s, ev) => {
+                MainForm_KeyDown(this, ev);
+            };
             contentPanel.Controls.Add(minimizeButton);
             minimizeButton.BringToFront();
             
@@ -253,11 +262,12 @@ namespace MyClipboard
             searchPanel.Dock = DockStyle.Bottom;
             searchPanel.Height = SEARCH_BOX_HEIGHT;
             searchPanel.BackColor = Color.FromArgb(0, 90, 158);
+            searchPanel.KeyDown += MainForm_KeyDown;
             contentPanel.Controls.Add(searchPanel);
             
             searchBox = new TextBox();
             searchBox.Dock = DockStyle.Fill;
-            searchBox.Font = new Font("微软雅黑", 14F);
+            searchBox.Font = new Font("微软雅黑", 15F);
             searchBox.ForeColor = Color.FromArgb(180, 210, 240);
             searchBox.Text = "搜索……";
             searchBox.BackColor = Color.FromArgb(0, 90, 158);
@@ -1060,6 +1070,83 @@ namespace MyClipboard
                 }
             }
             base.WndProc(ref m);
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            // 如果搜索框有焦点，不拦截键盘事件
+            if (searchBox.Focused)
+            {
+                return base.ProcessCmdKey(ref msg, keyData);
+            }
+
+            List<ClipboardItem> displayList = GetFilteredDisplayList();
+            if (displayList.Count == 0)
+                return base.ProcessCmdKey(ref msg, keyData);
+
+            int oldIndex = selectedIndex;
+            bool handled = false;
+
+            switch (keyData)
+            {
+                case Keys.Up:
+                    if (selectedIndex > 0)
+                        selectedIndex--;
+                    else if (selectedIndex < 0)
+                        selectedIndex = 0;
+                    handled = true;
+                    break;
+
+                case Keys.Down:
+                    if (selectedIndex < displayList.Count - 1)
+                        selectedIndex++;
+                    else if (selectedIndex < 0)
+                        selectedIndex = 0;
+                    handled = true;
+                    break;
+
+                case Keys.PageUp:
+                    int pageSize = listPanel.ClientSize.Height / ITEM_HEIGHT;
+                    selectedIndex = Math.Max(0, selectedIndex - pageSize);
+                    if (selectedIndex < 0)
+                        selectedIndex = 0;
+                    handled = true;
+                    break;
+
+                case Keys.PageDown:
+                    pageSize = listPanel.ClientSize.Height / ITEM_HEIGHT;
+                    selectedIndex = Math.Min(displayList.Count - 1, selectedIndex + pageSize);
+                    if (selectedIndex < 0)
+                        selectedIndex = 0;
+                    handled = true;
+                    break;
+
+                case Keys.Home:
+                    selectedIndex = 0;
+                    handled = true;
+                    break;
+
+                case Keys.End:
+                    selectedIndex = displayList.Count - 1;
+                    handled = true;
+                    break;
+
+                case Keys.Enter:
+                    if (selectedIndex >= 0 && selectedIndex < displayList.Count)
+                    {
+                        PasteItem(displayList[selectedIndex]);
+                        handled = true;
+                    }
+                    break;
+            }
+
+            if (handled && oldIndex != selectedIndex)
+            {
+                EnsureSelectedVisible();
+                listPanel.Invalidate();
+            }
+
+            return handled || base.ProcessCmdKey(ref msg, keyData);
         }
 
         private void ClipboardMonitor_ClipboardChanged(object sender, EventArgs e)
