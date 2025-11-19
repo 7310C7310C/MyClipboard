@@ -197,8 +197,10 @@ namespace MyClipboard
             
             // 调整listPanel大小以避开搜索框
             Action updateListPanelSize = () => {
+                int availableHeight = contentPanel.ClientSize.Height - SEARCH_BOX_HEIGHT;
                 listPanel.Location = new Point(0, 0);
-                listPanel.Size = new Size(contentPanel.ClientSize.Width, contentPanel.ClientSize.Height - SEARCH_BOX_HEIGHT);
+                listPanel.Size = new Size(contentPanel.ClientSize.Width, availableHeight);
+                scrollBarPanel.Height = availableHeight;
             };
             contentPanel.SizeChanged += (s, ev) => updateListPanelSize();
             updateListPanelSize();
@@ -208,7 +210,7 @@ namespace MyClipboard
             scrollBarPanel.Width = 8;
             scrollBarPanel.BackColor = Color.FromArgb(120, 120, 120);
             scrollBarPanel.Visible = true;
-            scrollBarPanel.Anchor = AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
+            scrollBarPanel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             scrollBarPanel.Cursor = Cursors.Hand;
             scrollBarPanel.MouseDown += ScrollBar_MouseDown;
             scrollBarPanel.MouseMove += ScrollBar_MouseMove;
@@ -300,7 +302,7 @@ namespace MyClipboard
                 if (string.IsNullOrWhiteSpace(searchBox.Text))
                 {
                     searchBox.Text = "搜索……";
-                    searchBox.ForeColor = isDarkTheme ? Color.FromArgb(180, 210, 240) : Color.FromArgb(60, 60, 60);
+                    searchBox.ForeColor = isDarkTheme ? Color.FromArgb(180, 210, 240) : Color.FromArgb(80, 80, 80);
                     searchBox.ReadOnly = true;
                     searchClearButton.Visible = false;
                 }
@@ -592,7 +594,7 @@ namespace MyClipboard
             if (e.KeyCode == Keys.Escape)
             {
                 searchBox.Text = "搜索……";
-                searchBox.ForeColor = isDarkTheme ? Color.FromArgb(180, 210, 240) : Color.FromArgb(60, 60, 60);
+                searchBox.ForeColor = isDarkTheme ? Color.FromArgb(180, 210, 240) : Color.FromArgb(80, 80, 80);
                 searchBox.ReadOnly = true;
                 searchFilter = "";
                 searchClearButton.Visible = false;
@@ -885,7 +887,7 @@ namespace MyClipboard
             
             // 切换视图时清空搜索
             searchBox.Text = "搜索……";
-            searchBox.ForeColor = isDarkTheme ? Color.FromArgb(180, 210, 240) : Color.FromArgb(60, 60, 60);
+            searchBox.ForeColor = isDarkTheme ? Color.FromArgb(180, 210, 240) : Color.FromArgb(80, 80, 80);
             searchFilter = "";
             
             scrollOffset = 0;
@@ -1799,22 +1801,22 @@ namespace MyClipboard
                 }
                 if (searchBox != null && searchBox.Text != "搜索……")
                 {
-                    searchBox.BackColor = Color.FromArgb(100, 160, 255);
+                    searchBox.BackColor = Color.FromArgb(180, 210, 255);
                     searchBox.ForeColor = Color.Black;
                 }
                 else if (searchBox != null)
                 {
-                    searchBox.BackColor = Color.FromArgb(100, 160, 255);
-                    searchBox.ForeColor = Color.FromArgb(60, 60, 60);
+                    searchBox.BackColor = Color.FromArgb(180, 210, 255);
+                    searchBox.ForeColor = Color.FromArgb(80, 80, 80);
                 }
                 if (searchPanel != null)
                 {
-                    searchPanel.BackColor = Color.FromArgb(100, 160, 255);
+                    searchPanel.BackColor = Color.FromArgb(180, 210, 255);
                 }
                 if (searchClearButton != null)
                 {
-                    searchClearButton.BackColor = Color.FromArgb(100, 160, 255);
-                    searchClearButton.ForeColor = Color.FromArgb(40, 40, 40);
+                    searchClearButton.BackColor = Color.FromArgb(180, 210, 255);
+                    searchClearButton.ForeColor = Color.FromArgb(60, 60, 60);
                 }
             }
             
