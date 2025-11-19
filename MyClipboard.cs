@@ -191,7 +191,6 @@ namespace MyClipboard
             listPanel.MouseClick += ListPanel_MouseClick;
             listPanel.MouseDoubleClick += ListPanel_MouseDoubleClick;
             listPanel.MouseWheel += ListPanel_MouseWheel;
-            listPanel.KeyDown += ListPanel_KeyDown;
             contentPanel.Controls.Add(listPanel);
             
             // Material Design 滚动条
@@ -245,19 +244,19 @@ namespace MyClipboard
             searchPanel = new Panel();
             searchPanel.Dock = DockStyle.Bottom;
             searchPanel.Height = SEARCH_BOX_HEIGHT;
-            searchPanel.BackColor = Color.FromArgb(40, 40, 40);
-            searchPanel.Padding = new Padding(5, 5, 0, 5);
+            searchPanel.BackColor = Color.FromArgb(50, 50, 52);
+            searchPanel.Padding = new Padding(8, 6, 0, 6);
             contentPanel.Controls.Add(searchPanel);
             
             searchBox = new TextBox();
             searchBox.Dock = DockStyle.Fill;
-            searchBox.Font = new Font("Consolas", 10F);
+            searchBox.Font = new Font("微软雅黑", 9.5F);
             searchBox.ForeColor = Color.Gray;
             searchBox.Text = "搜索……";
-            searchBox.BackColor = Color.FromArgb(40, 40, 40);
+            searchBox.BackColor = Color.FromArgb(60, 60, 62);
             searchBox.BorderStyle = BorderStyle.None;
             searchBox.TextAlign = HorizontalAlignment.Left;
-            searchBox.Multiline = true;
+            searchBox.Multiline = false;
             searchBox.ReadOnly = true;
             searchBox.TextChanged += SearchBox_TextChanged;
             searchBox.KeyDown += SearchBox_KeyDown;
@@ -435,6 +434,18 @@ namespace MyClipboard
         
         private void MainForm_KeyDown(object sender, KeyEventArgs e)
         {
+            // 如果搜索框有焦点，只处理 Ctrl+F 和 Escape
+            if (searchBox.Focused)
+            {
+                // Ctrl+F 在搜索框中无需处理
+                if (e.Control && e.KeyCode == Keys.F)
+                {
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                }
+                return;
+            }
+            
             // Ctrl+F 聚焦到搜索框
             if (e.Control && e.KeyCode == Keys.F)
             {
@@ -448,6 +459,81 @@ namespace MyClipboard
                 searchBox.SelectAll();
                 e.Handled = true;
                 e.SuppressKeyPress = true;
+                return;
+            }
+            
+            // 其他键盘操作（上下键、PageUp/Down等）
+            List<ClipboardItem> displayList = GetFilteredDisplayList();
+            if (displayList.Count == 0)
+                return;
+
+            int oldIndex = selectedIndex;
+            
+            switch (e.KeyCode)
+            {
+                case Keys.Up:
+                    if (selectedIndex > 0)
+                        selectedIndex--;
+                    else
+                        selectedIndex = 0;
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    break;
+                    
+                case Keys.Down:
+                    if (selectedIndex < displayList.Count - 1)
+                        selectedIndex++;
+                    else if (selectedIndex < 0)
+                        selectedIndex = 0;
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    break;
+                    
+                case Keys.PageUp:
+                    int pageSize = listPanel.ClientSize.Height / ITEM_HEIGHT;
+                    selectedIndex = Math.Max(0, selectedIndex - pageSize);
+                    if (selectedIndex < 0)
+                        selectedIndex = 0;
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    break;
+                    
+                case Keys.PageDown:
+                    pageSize = listPanel.ClientSize.Height / ITEM_HEIGHT;
+                    selectedIndex = Math.Min(displayList.Count - 1, selectedIndex + pageSize);
+                    if (selectedIndex < 0)
+                        selectedIndex = 0;
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    break;
+                    
+                case Keys.Home:
+                    selectedIndex = 0;
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    break;
+                    
+                case Keys.End:
+                    selectedIndex = displayList.Count - 1;
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    break;
+                    
+                case Keys.Enter:
+                    if (selectedIndex >= 0 && selectedIndex < displayList.Count)
+                    {
+                        PasteItem(displayList[selectedIndex]);
+                    }
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    break;
+            }
+            
+            // 如果选中项改变，确保其可见并重绘
+            if (oldIndex != selectedIndex)
+            {
+                EnsureSelectedVisible();
+                listPanel.Invalidate();
             }
         }
         
@@ -660,82 +746,6 @@ namespace MyClipboard
             listPanel.Invalidate();
         }
 
-        private void ListPanel_KeyDown(object sender, KeyEventArgs e)
-        {
-            List<ClipboardItem> displayList = GetFilteredDisplayList();
-            if (displayList.Count == 0)
-                return;
-
-            int oldIndex = selectedIndex;
-            
-            switch (e.KeyCode)
-            {
-                case Keys.Up:
-                    if (selectedIndex > 0)
-                        selectedIndex--;
-                    else
-                        selectedIndex = 0;
-                    e.Handled = true;
-                    e.SuppressKeyPress = true;
-                    break;
-                    
-                case Keys.Down:
-                    if (selectedIndex < displayList.Count - 1)
-                        selectedIndex++;
-                    else if (selectedIndex < 0)
-                        selectedIndex = 0;
-                    e.Handled = true;
-                    e.SuppressKeyPress = true;
-                    break;
-                    
-                case Keys.PageUp:
-                    int pageSize = listPanel.ClientSize.Height / ITEM_HEIGHT;
-                    selectedIndex = Math.Max(0, selectedIndex - pageSize);
-                    if (selectedIndex < 0)
-                        selectedIndex = 0;
-                    e.Handled = true;
-                    e.SuppressKeyPress = true;
-                    break;
-                    
-                case Keys.PageDown:
-                    pageSize = listPanel.ClientSize.Height / ITEM_HEIGHT;
-                    selectedIndex = Math.Min(displayList.Count - 1, selectedIndex + pageSize);
-                    if (selectedIndex < 0)
-                        selectedIndex = 0;
-                    e.Handled = true;
-                    e.SuppressKeyPress = true;
-                    break;
-                    
-                case Keys.Home:
-                    selectedIndex = 0;
-                    e.Handled = true;
-                    e.SuppressKeyPress = true;
-                    break;
-                    
-                case Keys.End:
-                    selectedIndex = displayList.Count - 1;
-                    e.Handled = true;
-                    e.SuppressKeyPress = true;
-                    break;
-                    
-                case Keys.Enter:
-                    if (selectedIndex >= 0 && selectedIndex < displayList.Count)
-                    {
-                        PasteItem(displayList[selectedIndex]);
-                    }
-                    e.Handled = true;
-                    e.SuppressKeyPress = true;
-                    break;
-            }
-            
-            // 如果选中项改变，确保其可见并重绘
-            if (oldIndex != selectedIndex)
-            {
-                EnsureSelectedVisible();
-                listPanel.Invalidate();
-            }
-        }
-        
         private void EnsureSelectedVisible()
         {
             if (selectedIndex < 0)
@@ -1628,16 +1638,16 @@ namespace MyClipboard
                 }
                 if (searchBox != null && searchBox.Text != "搜索……")
                 {
-                    searchBox.BackColor = Color.FromArgb(40, 40, 40);
+                    searchBox.BackColor = Color.FromArgb(60, 60, 62);
                     searchBox.ForeColor = Color.White;
                 }
                 else if (searchBox != null)
                 {
-                    searchBox.BackColor = Color.FromArgb(40, 40, 40);
+                    searchBox.BackColor = Color.FromArgb(60, 60, 62);
                 }
                 if (searchPanel != null)
                 {
-                    searchPanel.BackColor = Color.FromArgb(40, 40, 40);
+                    searchPanel.BackColor = Color.FromArgb(50, 50, 52);
                 }
                 if (searchClearButton != null)
                 {
@@ -1674,16 +1684,16 @@ namespace MyClipboard
                 }
                 if (searchBox != null && searchBox.Text != "搜索……")
                 {
-                    searchBox.BackColor = Color.White;
+                    searchBox.BackColor = Color.FromArgb(245, 245, 245);
                     searchBox.ForeColor = Color.Black;
                 }
                 else if (searchBox != null)
                 {
-                    searchBox.BackColor = Color.White;
+                    searchBox.BackColor = Color.FromArgb(245, 245, 245);
                 }
                 if (searchPanel != null)
                 {
-                    searchPanel.BackColor = Color.White;
+                    searchPanel.BackColor = Color.FromArgb(230, 230, 230);
                 }
                 if (searchClearButton != null)
                 {
