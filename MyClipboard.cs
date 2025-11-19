@@ -87,9 +87,7 @@ namespace MyClipboard
         private Button minimizeButton;
         private Button favoritesButton;
         private TextBox searchBox;
-        private ToolTip itemToolTip;
         private Point lastContextMenuPosition;
-        private int pendingTooltipItemIndex = -1;
         private const int ITEM_HEIGHT = 60;
         private const int SEARCH_BOX_HEIGHT = 35;
         private bool firstRun = true;
@@ -169,15 +167,8 @@ namespace MyClipboard
 
             // ImageList for thumbnails
             imageList = new ImageList();
-            imageList.ImageSize = new Size(48, 48);
+            imageList.ImageSize = new Size(54, 54);
             imageList.ColorDepth = ColorDepth.Depth32Bit;
-            
-            // ToolTip 初始化
-            itemToolTip = new ToolTip();
-            itemToolTip.AutoPopDelay = 5000;
-            itemToolTip.InitialDelay = 300;
-            itemToolTip.ReshowDelay = 100;
-            itemToolTip.ShowAlways = true;
 
             // 清單面板（自繪）
             listPanel = new Panel();
@@ -480,10 +471,10 @@ namespace MyClipboard
                         if (imageIndex >= 0 && imageIndex < imageList.Images.Count)
                         {
                             Image thumbnail = imageList.Images[imageIndex];
-                            int imgX = panelWidth - 53;
-                            int imgY = itemY + (ITEM_HEIGHT - 48) / 2;
-                            e.Graphics.DrawImage(thumbnail, imgX, imgY, 48, 48);
-                            textWidth = panelWidth - 65;
+                            int imgX = panelWidth - 58;
+                            int imgY = itemY + (ITEM_HEIGHT - 54) / 2;
+                            e.Graphics.DrawImage(thumbnail, imgX, imgY, 54, 54);
+                            textWidth = panelWidth - 68;
                         }
                     }
                     catch { }
@@ -516,53 +507,8 @@ namespace MyClipboard
                 listPanel.Focus();
             }
             
-            if (e.Button == MouseButtons.Left)
+            if (e.Button == MouseButtons.Right)
             {
-                // 左键单击显示提示
-                int itemIndex = GetItemIndexAtPoint(e.Location);
-                
-                if (itemIndex >= 0 && itemIndex != pendingTooltipItemIndex)
-                {
-                    pendingTooltipItemIndex = itemIndex;
-                    
-                    List<ClipboardItem> displayList = GetFilteredDisplayList();
-                    if (itemIndex < displayList.Count)
-                    {
-                        ClipboardItem item = displayList[itemIndex];
-                        string tooltipText = "";
-                        
-                        if (item.Format == "Image")
-                        {
-                            tooltipText = item.Text; // 图片尺寸信息
-                        }
-                        else if (!string.IsNullOrEmpty(item.Text))
-                        {
-                            // 显示前500个字符
-                            tooltipText = item.Text.Length > 500 
-                                ? item.Text.Substring(0, 500) + "..." 
-                                : item.Text;
-                        }
-                        else
-                        {
-                            tooltipText = item.Format;
-                        }
-                        
-                        itemToolTip.SetToolTip(listPanel, tooltipText);
-                    }
-                }
-                else if (itemIndex < 0)
-                {
-                    // 点击空白处，清除提示
-                    itemToolTip.SetToolTip(listPanel, "");
-                    pendingTooltipItemIndex = -1;
-                }
-            }
-            else if (e.Button == MouseButtons.Right)
-            {
-                // 右键点击时停止悬停提示，避免遮挡菜单
-                itemToolTip.SetToolTip(listPanel, "");
-                pendingTooltipItemIndex = -1;
-                
                 // 保存右键点击位置
                 lastContextMenuPosition = e.Location;
                 
@@ -770,7 +716,7 @@ namespace MyClipboard
                 this.Activate();
                 this.BringToFront();
                 this.TopMost = true;
-                // 刷新显示以确保数据最新
+                // 只重绘，不重建缩略图
                 listPanel.Invalidate();
             }
         }
@@ -871,6 +817,8 @@ namespace MyClipboard
                     this.Activate();
                     this.BringToFront();
                     this.TopMost = true;
+                    // 只重绘，不重建缩略图
+                    listPanel.Invalidate();
                 }
             }
             base.WndProc(ref m);
@@ -972,12 +920,22 @@ namespace MyClipboard
                 if (this.InvokeRequired)
                 {
                     this.Invoke((MethodInvoker)delegate {
+                        // 只在添加图片时重建缩略图
+                        if (item.Format == "Image")
+                        {
+                            RebuildImageList();
+                        }
                         RefreshListView();
                         SaveHistory();
                     });
                 }
                 else
                 {
+                    // 只在添加图片时重建缩略图
+                    if (item.Format == "Image")
+                    {
+                        RebuildImageList();
+                    }
                     RefreshListView();
                     SaveHistory();
                 }
@@ -990,7 +948,13 @@ namespace MyClipboard
 
         private void RefreshListView()
         {
-            // 重新加載圖片
+            // 只重绘列表，不重新加载图片
+            listPanel.Invalidate();
+        }
+        
+        private void RebuildImageList()
+        {
+            // 重新加载图片缩略图
             imageList.Images.Clear();
             
             foreach (var item in clipboardHistory)
@@ -1003,15 +967,13 @@ namespace MyClipboard
                         using (MemoryStream ms = new MemoryStream(item.Data))
                         {
                             Image img = Image.FromStream(ms);
-                            Image thumbnail = CreateThumbnail(img, 48, 48);
+                            Image thumbnail = CreateThumbnail(img, 54, 54);
                             imageList.Images.Add(thumbnail);
                         }
                     }
                     catch { }
                 }
             }
-            
-            listPanel.Invalidate();
         }
 
         private Image CreateThumbnail(Image image, int width, int height)
@@ -1118,6 +1080,8 @@ namespace MyClipboard
                         editBox.Font = new Font("Consolas", 10F);
                         editBox.Text = item.Text;
                         editBox.Padding = new Padding(5);
+                        editBox.SelectionStart = 0;
+                        editBox.SelectionLength = 0;
                         editForm.Controls.Add(editBox);
                         
                         Panel buttonPanel = new Panel();
@@ -1582,6 +1546,7 @@ namespace MyClipboard
                     }
                 }
 
+                RebuildImageList();
                 RefreshListView();
             }
             catch
