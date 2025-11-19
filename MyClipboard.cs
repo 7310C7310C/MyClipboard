@@ -98,6 +98,7 @@ namespace MyClipboard
         private string searchFilter = "";
         private Color favoriteBgColor1Light, favoriteBgColor2Light;
         private Color favoriteBgColor1Dark, favoriteBgColor2Dark;
+        private int selectedIndex = -1;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -175,6 +176,7 @@ namespace MyClipboard
             listPanel.Dock = DockStyle.Fill;
             listPanel.BackColor = Color.FromArgb(30, 30, 30);
             listPanel.Font = new Font("Consolas", 10F);
+            listPanel.TabStop = true;
             // 啟用雙緩衝減少閃爍
             typeof(Panel).InvokeMember("DoubleBuffered",
                 System.Reflection.BindingFlags.SetProperty | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
@@ -186,6 +188,7 @@ namespace MyClipboard
             listPanel.MouseClick += ListPanel_MouseClick;
             listPanel.MouseDoubleClick += ListPanel_MouseDoubleClick;
             listPanel.MouseWheel += ListPanel_MouseWheel;
+            listPanel.KeyDown += ListPanel_KeyDown;
             contentPanel.Controls.Add(listPanel);
             
             // Material Design 滚动条
@@ -253,6 +256,8 @@ namespace MyClipboard
                     searchBox.Text = "";
                     searchBox.ForeColor = isDarkTheme ? Color.White : Color.Black;
                 }
+                selectedIndex = -1;
+                listPanel.Invalidate();
             };
             searchBox.Leave += (s, ev) => {
                 if (string.IsNullOrWhiteSpace(searchBox.Text))
@@ -402,6 +407,7 @@ namespace MyClipboard
                 searchFilter = searchBox.Text;
             }
             scrollOffset = 0;
+            selectedIndex = -1;
             listPanel.Invalidate();
         }
         
@@ -480,9 +486,25 @@ namespace MyClipboard
                     catch { }
                 }
 
-                // 給製文字（左對齊）
+                // 给製文字（左對齊）- 优化：限制显示长度，避免长文本卡顿
+                string displayText = item.ToString();
+                if (displayText.Length > 100)
+                {
+                    displayText = displayText.Substring(0, 100) + "...";
+                }
+                
                 Rectangle textRect = new Rectangle(5, itemY + 5, textWidth, ITEM_HEIGHT - 10);
-                TextRenderer.DrawText(e.Graphics, item.ToString(), listPanel.Font, textRect, 
+                
+                // 如果是选中项，绘制高亮边框
+                if (i == selectedIndex)
+                {
+                    using (Pen highlightPen = new Pen(Color.FromArgb(0, 120, 215), 2))
+                    {
+                        e.Graphics.DrawRectangle(highlightPen, new Rectangle(1, itemY + 1, panelWidth - 2, ITEM_HEIGHT - 2));
+                    }
+                }
+                
+                TextRenderer.DrawText(e.Graphics, displayText, listPanel.Font, textRect, 
                     textColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             }
             
@@ -507,7 +529,18 @@ namespace MyClipboard
                 listPanel.Focus();
             }
             
-            if (e.Button == MouseButtons.Right)
+            if (e.Button == MouseButtons.Left)
+            {
+                // 设置选中项
+                int itemIndex = GetItemIndexAtPoint(e.Location);
+                if (itemIndex >= 0)
+                {
+                    selectedIndex = itemIndex;
+                    listPanel.Invalidate();
+                    listPanel.Focus();
+                }
+            }
+            else if (e.Button == MouseButtons.Right)
             {
                 // 保存右键点击位置
                 lastContextMenuPosition = e.Location;
@@ -515,6 +548,8 @@ namespace MyClipboard
                 int itemIndex = GetItemIndexAtPoint(e.Location);
                 if (itemIndex >= 0)
                 {
+                    selectedIndex = itemIndex;
+                    listPanel.Invalidate();
                     listContextMenu.Show(listPanel, e.Location);
                 }
                 else
@@ -551,6 +586,101 @@ namespace MyClipboard
             scrollOffset = Math.Max(0, Math.Min(scrollOffset, maxScroll));
             
             listPanel.Invalidate();
+        }
+
+        private void ListPanel_KeyDown(object sender, KeyEventArgs e)
+        {
+            List<ClipboardItem> displayList = GetFilteredDisplayList();
+            if (displayList.Count == 0)
+                return;
+
+            int oldIndex = selectedIndex;
+            
+            switch (e.KeyCode)
+            {
+                case Keys.Up:
+                    if (selectedIndex > 0)
+                        selectedIndex--;
+                    else
+                        selectedIndex = 0;
+                    e.Handled = true;
+                    break;
+                    
+                case Keys.Down:
+                    if (selectedIndex < displayList.Count - 1)
+                        selectedIndex++;
+                    else if (selectedIndex < 0)
+                        selectedIndex = 0;
+                    e.Handled = true;
+                    break;
+                    
+                case Keys.PageUp:
+                    int pageSize = listPanel.ClientSize.Height / ITEM_HEIGHT;
+                    selectedIndex = Math.Max(0, selectedIndex - pageSize);
+                    if (selectedIndex < 0)
+                        selectedIndex = 0;
+                    e.Handled = true;
+                    break;
+                    
+                case Keys.PageDown:
+                    pageSize = listPanel.ClientSize.Height / ITEM_HEIGHT;
+                    selectedIndex = Math.Min(displayList.Count - 1, selectedIndex + pageSize);
+                    if (selectedIndex < 0)
+                        selectedIndex = 0;
+                    e.Handled = true;
+                    break;
+                    
+                case Keys.Home:
+                    selectedIndex = 0;
+                    e.Handled = true;
+                    break;
+                    
+                case Keys.End:
+                    selectedIndex = displayList.Count - 1;
+                    e.Handled = true;
+                    break;
+                    
+                case Keys.Enter:
+                    if (selectedIndex >= 0 && selectedIndex < displayList.Count)
+                    {
+                        PasteItem(displayList[selectedIndex]);
+                    }
+                    e.Handled = true;
+                    break;
+            }
+            
+            // 如果选中项改变，确保其可见并重绘
+            if (oldIndex != selectedIndex)
+            {
+                EnsureSelectedVisible();
+                listPanel.Invalidate();
+            }
+        }
+        
+        private void EnsureSelectedVisible()
+        {
+            if (selectedIndex < 0)
+                return;
+                
+            int selectedY = selectedIndex * ITEM_HEIGHT;
+            int viewportTop = scrollOffset;
+            int viewportBottom = scrollOffset + listPanel.ClientSize.Height;
+            
+            // 如果选中项在视口上方
+            if (selectedY < viewportTop)
+            {
+                scrollOffset = selectedY;
+            }
+            // 如果选中项在视口下方
+            else if (selectedY + ITEM_HEIGHT > viewportBottom)
+            {
+                scrollOffset = selectedY + ITEM_HEIGHT - listPanel.ClientSize.Height;
+            }
+            
+            List<ClipboardItem> displayList = GetFilteredDisplayList();
+            int totalHeight = displayList.Count * ITEM_HEIGHT;
+            int maxScroll = Math.Max(0, totalHeight - listPanel.ClientSize.Height);
+            scrollOffset = Math.Max(0, Math.Min(scrollOffset, maxScroll));
         }
 
         private void ScrollBar_MouseDown(object sender, MouseEventArgs e)
@@ -638,6 +768,7 @@ namespace MyClipboard
             searchFilter = "";
             
             scrollOffset = 0;
+            selectedIndex = -1;
             listPanel.Invalidate();
         }
         
