@@ -89,7 +89,7 @@ namespace MyClipboard
         private TextBox searchBox;
         private ToolTip itemToolTip;
         private Point lastContextMenuPosition;
-        private Timer tooltipDelayTimer;
+        private System.Windows.Forms.Timer tooltipDelayTimer;
         private int pendingTooltipItemIndex = -1;
         private const int ITEM_HEIGHT = 60;
         private const int SEARCH_BOX_HEIGHT = 35;
@@ -181,7 +181,7 @@ namespace MyClipboard
             itemToolTip.ShowAlways = true;
             
             // ToolTip 延时定时器
-            tooltipDelayTimer = new Timer();
+            tooltipDelayTimer = new System.Windows.Forms.Timer();
             tooltipDelayTimer.Interval = 800;
             tooltipDelayTimer.Tick += TooltipDelayTimer_Tick;
 
