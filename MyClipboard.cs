@@ -177,7 +177,7 @@ namespace MyClipboard
 
             // 清單面板（自繪）
             listPanel = new Panel();
-            listPanel.Dock = DockStyle.Fill;
+            listPanel.Dock = DockStyle.None;
             listPanel.BackColor = Color.FromArgb(30, 30, 30);
             listPanel.Font = new Font("Consolas", 10F);
             listPanel.TabStop = true;
@@ -194,6 +194,14 @@ namespace MyClipboard
             listPanel.MouseWheel += ListPanel_MouseWheel;
             listPanel.KeyDown += MainForm_KeyDown;
             contentPanel.Controls.Add(listPanel);
+            
+            // 调整listPanel大小以避开搜索框
+            Action updateListPanelSize = () => {
+                listPanel.Location = new Point(0, 0);
+                listPanel.Size = new Size(contentPanel.ClientSize.Width, contentPanel.ClientSize.Height - SEARCH_BOX_HEIGHT);
+            };
+            contentPanel.SizeChanged += (s, ev) => updateListPanelSize();
+            updateListPanelSize();
             
             // Material Design 滚动条
             scrollBarPanel = new Panel();
@@ -267,7 +275,7 @@ namespace MyClipboard
             
             searchBox = new TextBox();
             searchBox.Dock = DockStyle.Fill;
-            searchBox.Font = new Font("微软雅黑", 16F);
+            searchBox.Font = new Font("微软雅黑", 18F);
             searchBox.ForeColor = Color.FromArgb(180, 210, 240);
             searchBox.Text = "搜索……";
             searchBox.BackColor = Color.FromArgb(0, 90, 158);
@@ -292,7 +300,7 @@ namespace MyClipboard
                 if (string.IsNullOrWhiteSpace(searchBox.Text))
                 {
                     searchBox.Text = "搜索……";
-                    searchBox.ForeColor = isDarkTheme ? Color.FromArgb(180, 210, 240) : Color.FromArgb(80, 80, 80);
+                    searchBox.ForeColor = isDarkTheme ? Color.FromArgb(180, 210, 240) : Color.FromArgb(60, 60, 60);
                     searchBox.ReadOnly = true;
                     searchClearButton.Visible = false;
                 }
@@ -584,7 +592,7 @@ namespace MyClipboard
             if (e.KeyCode == Keys.Escape)
             {
                 searchBox.Text = "搜索……";
-                searchBox.ForeColor = isDarkTheme ? Color.FromArgb(180, 210, 240) : Color.FromArgb(80, 80, 80);
+                searchBox.ForeColor = isDarkTheme ? Color.FromArgb(180, 210, 240) : Color.FromArgb(60, 60, 60);
                 searchBox.ReadOnly = true;
                 searchFilter = "";
                 searchClearButton.Visible = false;
@@ -877,7 +885,7 @@ namespace MyClipboard
             
             // 切换视图时清空搜索
             searchBox.Text = "搜索……";
-            searchBox.ForeColor = isDarkTheme ? Color.FromArgb(180, 210, 240) : Color.FromArgb(80, 80, 80);
+            searchBox.ForeColor = isDarkTheme ? Color.FromArgb(180, 210, 240) : Color.FromArgb(60, 60, 60);
             searchFilter = "";
             
             scrollOffset = 0;
@@ -1137,6 +1145,11 @@ namespace MyClipboard
                         PasteItem(displayList[selectedIndex]);
                         handled = true;
                     }
+                    break;
+                    
+                case Keys.Escape:
+                    this.Hide();
+                    handled = true;
                     break;
             }
 
@@ -1786,22 +1799,22 @@ namespace MyClipboard
                 }
                 if (searchBox != null && searchBox.Text != "搜索……")
                 {
-                    searchBox.BackColor = Color.FromArgb(180, 210, 255);
+                    searchBox.BackColor = Color.FromArgb(100, 160, 255);
                     searchBox.ForeColor = Color.Black;
                 }
                 else if (searchBox != null)
                 {
-                    searchBox.BackColor = Color.FromArgb(180, 210, 255);
-                    searchBox.ForeColor = Color.FromArgb(80, 80, 80);
+                    searchBox.BackColor = Color.FromArgb(100, 160, 255);
+                    searchBox.ForeColor = Color.FromArgb(60, 60, 60);
                 }
                 if (searchPanel != null)
                 {
-                    searchPanel.BackColor = Color.FromArgb(180, 210, 255);
+                    searchPanel.BackColor = Color.FromArgb(100, 160, 255);
                 }
                 if (searchClearButton != null)
                 {
-                    searchClearButton.BackColor = Color.FromArgb(180, 210, 255);
-                    searchClearButton.ForeColor = Color.FromArgb(60, 60, 60);
+                    searchClearButton.BackColor = Color.FromArgb(100, 160, 255);
+                    searchClearButton.ForeColor = Color.FromArgb(40, 40, 40);
                 }
             }
             
