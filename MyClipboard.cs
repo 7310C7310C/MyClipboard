@@ -277,9 +277,9 @@ namespace MyClipboard
             searchBox.BackColor = Color.FromArgb(45, 45, 48);
             searchBox.BorderStyle = BorderStyle.None;
             searchBox.TextAlign = HorizontalAlignment.Left;
-            searchBox.Multiline = false;
+            searchBox.Multiline = true;
             searchBox.ReadOnly = true;
-            searchBox.Margin = new Padding(8, 0, 0, 0);
+            searchBox.Padding = new Padding(8, 8, 0, 0);
             searchBox.TextChanged += SearchBox_TextChanged;
             searchBox.KeyDown += SearchBox_KeyDown;
             searchBox.Enter += (s, ev) => {
@@ -456,6 +456,12 @@ namespace MyClipboard
         
         private void MainForm_KeyDown(object sender, KeyEventArgs e)
         {
+            // 如果按钮有焦点，先移除焦点
+            if (favoritesButton.Focused || minimizeButton.Focused)
+            {
+                listPanel.Focus();
+            }
+            
             // 如果搜索框有焦点，只处理 Ctrl+F 和 Escape
             if (searchBox.Focused)
             {
