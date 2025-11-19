@@ -87,6 +87,7 @@ namespace MyClipboard
         private Button minimizeButton;
         private Button favoritesButton;
         private TextBox searchBox;
+        private Button clearSearchButton;
         private Point lastContextMenuPosition;
         private const int ITEM_HEIGHT = 60;
         private const int SEARCH_BOX_HEIGHT = 35;
@@ -236,18 +237,25 @@ namespace MyClipboard
             contentPanel.Controls.Add(minimizeButton);
             minimizeButton.BringToFront();
             
-            // 搜索框（底部）
+            // 搜索框容器（底部）
+            Panel searchPanel = new Panel();
+            searchPanel.Dock = DockStyle.Bottom;
+            searchPanel.Height = SEARCH_BOX_HEIGHT;
+            searchPanel.BackColor = Color.FromArgb(40, 40, 40);
+            contentPanel.Controls.Add(searchPanel);
+
+            // 搜索框
             searchBox = new TextBox();
-            searchBox.Dock = DockStyle.Bottom;
-            searchBox.Height = SEARCH_BOX_HEIGHT;
+            searchBox.Dock = DockStyle.Fill;
             searchBox.Font = new Font("Consolas", 10F);
             searchBox.ForeColor = Color.Gray;
             searchBox.Text = "搜索……";
             searchBox.BackColor = Color.FromArgb(40, 40, 40);
-            searchBox.BorderStyle = BorderStyle.FixedSingle;
+            searchBox.BorderStyle = BorderStyle.None;
             searchBox.TextAlign = HorizontalAlignment.Left;
             searchBox.Padding = new Padding(5);
             searchBox.ReadOnly = true;
+            searchBox.TabStop = false;
             searchBox.TextChanged += SearchBox_TextChanged;
             searchBox.Enter += (s, ev) => {
                 if (searchBox.Text == "搜索……")
@@ -258,6 +266,7 @@ namespace MyClipboard
                 }
                 selectedIndex = -1;
                 listPanel.Invalidate();
+                UpdateClearButtonVisibility();
             };
             searchBox.Leave += (s, ev) => {
                 if (string.IsNullOrWhiteSpace(searchBox.Text))
@@ -267,7 +276,44 @@ namespace MyClipboard
                     searchBox.ReadOnly = true;
                 }
             };
-            contentPanel.Controls.Add(searchBox);
+            searchBox.KeyDown += (s, ev) => {
+                // 阻止方向键在搜索框中的默认行为
+                if (ev.KeyCode == Keys.Up || ev.KeyCode == Keys.Down)
+                {
+                    ev.SuppressKeyPress = true;
+                    listPanel.Focus();
+                    // 触发 listPanel 的 KeyDown 事件
+                    ListPanel_KeyDown(listPanel, ev);
+                }
+            };
+            searchPanel.Controls.Add(searchBox);
+            
+            // 清除按钮
+            clearSearchButton = new Button();
+            clearSearchButton.Text = "×";
+            clearSearchButton.Size = new Size(30, SEARCH_BOX_HEIGHT);
+            clearSearchButton.Dock = DockStyle.Right;
+            clearSearchButton.FlatStyle = FlatStyle.Flat;
+            clearSearchButton.FlatAppearance.BorderSize = 0;
+            clearSearchButton.BackColor = Color.FromArgb(40, 40, 40);
+            clearSearchButton.ForeColor = Color.Gray;
+            clearSearchButton.Font = new Font("Arial", 14F, FontStyle.Bold);
+            clearSearchButton.Cursor = Cursors.Hand;
+            clearSearchButton.Visible = false;
+            clearSearchButton.TabStop = false;
+            clearSearchButton.Click += (s, ev) => {
+                searchBox.Text = "";
+                searchBox.Text = "搜索……";
+                searchBox.ForeColor = Color.Gray;
+                searchBox.ReadOnly = true;
+                searchFilter = "";
+                scrollOffset = 0;
+                selectedIndex = -1;
+                listPanel.Invalidate();
+                listPanel.Focus();
+                UpdateClearButtonVisibility();
+            };
+            searchPanel.Controls.Add(clearSearchButton);
 
             // 右鍵選單
             listContextMenu = new ContextMenuStrip();
@@ -409,6 +455,15 @@ namespace MyClipboard
             scrollOffset = 0;
             selectedIndex = -1;
             listPanel.Invalidate();
+            UpdateClearButtonVisibility();
+        }
+        
+        private void UpdateClearButtonVisibility()
+        {
+            if (clearSearchButton != null)
+            {
+                clearSearchButton.Visible = !string.IsNullOrWhiteSpace(searchBox.Text) && searchBox.Text != "搜索……";
+            }
         }
         
         private void ListPanel_Paint(object sender, PaintEventArgs e)
@@ -488,9 +543,9 @@ namespace MyClipboard
 
                 // 给製文字（左對齊）- 优化：限制显示长度，避免长文本卡顿
                 string displayText = item.ToString();
-                if (displayText.Length > 100)
+                if (displayText.Length > 144)
                 {
-                    displayText = displayText.Substring(0, 100) + "...";
+                    displayText = displayText.Substring(0, 144) + "...";
                 }
                 
                 Rectangle textRect = new Rectangle(5, itemY + 5, textWidth, ITEM_HEIGHT - 10);
@@ -1552,6 +1607,11 @@ namespace MyClipboard
                 {
                     searchBox.BackColor = Color.FromArgb(40, 40, 40);
                 }
+                if (clearSearchButton != null)
+                {
+                    clearSearchButton.BackColor = Color.FromArgb(40, 40, 40);
+                    clearSearchButton.ForeColor = Color.LightGray;
+                }
             }
             else
             {
@@ -1588,6 +1648,11 @@ namespace MyClipboard
                 else if (searchBox != null)
                 {
                     searchBox.BackColor = Color.White;
+                }
+                if (clearSearchButton != null)
+                {
+                    clearSearchButton.BackColor = Color.White;
+                    clearSearchButton.ForeColor = Color.Gray;
                 }
             }
             
