@@ -89,6 +89,8 @@ namespace MyClipboard
         private TextBox searchBox;
         private ToolTip itemToolTip;
         private Point lastContextMenuPosition;
+        private Timer tooltipDelayTimer;
+        private int pendingTooltipItemIndex = -1;
         private const int ITEM_HEIGHT = 60;
         private const int SEARCH_BOX_HEIGHT = 35;
         private bool firstRun = true;
@@ -174,9 +176,14 @@ namespace MyClipboard
             // ToolTip 初始化
             itemToolTip = new ToolTip();
             itemToolTip.AutoPopDelay = 5000;
-            itemToolTip.InitialDelay = 300;
+            itemToolTip.InitialDelay = 800;
             itemToolTip.ReshowDelay = 100;
             itemToolTip.ShowAlways = true;
+            
+            // ToolTip 延时定时器
+            tooltipDelayTimer = new Timer();
+            tooltipDelayTimer.Interval = 800;
+            tooltipDelayTimer.Tick += TooltipDelayTimer_Tick;
 
             // 清單面板（自繪）
             listPanel = new Panel();
@@ -248,24 +255,27 @@ namespace MyClipboard
             searchBox.Height = SEARCH_BOX_HEIGHT;
             searchBox.Font = new Font("Consolas", 10F);
             searchBox.ForeColor = Color.Gray;
-            searchBox.Text = "搜索...";
+            searchBox.Text = "搜索……";
             searchBox.BackColor = Color.FromArgb(40, 40, 40);
             searchBox.BorderStyle = BorderStyle.FixedSingle;
             searchBox.TextAlign = HorizontalAlignment.Left;
             searchBox.Padding = new Padding(5);
+            searchBox.ReadOnly = true;
             searchBox.TextChanged += SearchBox_TextChanged;
-            searchBox.GotFocus += (s, ev) => {
-                if (searchBox.Text == "搜索...")
+            searchBox.Enter += (s, ev) => {
+                if (searchBox.Text == "搜索……")
                 {
+                    searchBox.ReadOnly = false;
                     searchBox.Text = "";
                     searchBox.ForeColor = isDarkTheme ? Color.White : Color.Black;
                 }
             };
-            searchBox.LostFocus += (s, ev) => {
+            searchBox.Leave += (s, ev) => {
                 if (string.IsNullOrWhiteSpace(searchBox.Text))
                 {
-                    searchBox.Text = "搜索...";
+                    searchBox.Text = "搜索……";
                     searchBox.ForeColor = Color.Gray;
+                    searchBox.ReadOnly = true;
                 }
             };
             contentPanel.Controls.Add(searchBox);
@@ -274,6 +284,7 @@ namespace MyClipboard
             listContextMenu = new ContextMenuStrip();
             listContextMenu.Items.Add("收藏", null, ToggleFavorite_Click);
             listContextMenu.Items.Add(new ToolStripSeparator());
+            listContextMenu.Items.Add("編輯", null, EditItem_Click);
             listContextMenu.Items.Add("複製", null, CopyItem_Click);
             listContextMenu.Items.Add("刪除", null, DeleteItem_Click);
             listContextMenu.Items.Add(new ToolStripSeparator());
@@ -395,7 +406,7 @@ namespace MyClipboard
         
         private void SearchBox_TextChanged(object sender, EventArgs e)
         {
-            if (searchBox.Text == "搜索...")
+            if (searchBox.Text == "搜索……")
             {
                 searchFilter = "";
             }
@@ -410,12 +421,37 @@ namespace MyClipboard
         private void ListPanel_MouseMove_ShowTooltip(object sender, MouseEventArgs e)
         {
             int itemIndex = GetItemIndexAtPoint(e.Location);
-            if (itemIndex >= 0)
+            
+            if (itemIndex >= 0 && itemIndex != pendingTooltipItemIndex)
+            {
+                // 停止之前的定时器
+                tooltipDelayTimer.Stop();
+                // 清除当前 tooltip
+                itemToolTip.SetToolTip(listPanel, "");
+                // 设置新的待显示项
+                pendingTooltipItemIndex = itemIndex;
+                // 启动延时
+                tooltipDelayTimer.Start();
+            }
+            else if (itemIndex < 0)
+            {
+                // 鼠标离开所有项目
+                tooltipDelayTimer.Stop();
+                itemToolTip.SetToolTip(listPanel, "");
+                pendingTooltipItemIndex = -1;
+            }
+        }
+        
+        private void TooltipDelayTimer_Tick(object sender, EventArgs e)
+        {
+            tooltipDelayTimer.Stop();
+            
+            if (pendingTooltipItemIndex >= 0)
             {
                 List<ClipboardItem> displayList = GetFilteredDisplayList();
-                if (itemIndex < displayList.Count)
+                if (pendingTooltipItemIndex < displayList.Count)
                 {
-                    ClipboardItem item = displayList[itemIndex];
+                    ClipboardItem item = displayList[pendingTooltipItemIndex];
                     string tooltipText = "";
                     
                     if (item.Format == "Image")
@@ -434,16 +470,8 @@ namespace MyClipboard
                         tooltipText = item.Format;
                     }
                     
-                    // 只有当内容改变时才更新 ToolTip
-                    if (itemToolTip.GetToolTip(listPanel) != tooltipText)
-                    {
-                        itemToolTip.SetToolTip(listPanel, tooltipText);
-                    }
+                    itemToolTip.SetToolTip(listPanel, tooltipText);
                 }
-            }
-            else
-            {
-                itemToolTip.SetToolTip(listPanel, "");
             }
         }
 
@@ -543,6 +571,12 @@ namespace MyClipboard
 
         private void ListPanel_MouseClick(object sender, MouseEventArgs e)
         {
+            // 点击列表时移除搜索框焦点
+            if (searchBox.Focused)
+            {
+                listPanel.Focus();
+            }
+            
             if (e.Button == MouseButtons.Right)
             {
                 // 保存右键点击位置
@@ -721,8 +755,8 @@ namespace MyClipboard
             Point mousePos = listPanel.PointToClient(Control.MousePosition);
             int itemIndex = GetItemIndexAtPoint(mousePos);
             
-            // 在收藏界面隐藏"清空"选项
-            listContextMenu.Items[5].Visible = !showingFavorites;
+            // 在收藏界面隐藏"清空"选项（索引调整为6）
+            listContextMenu.Items[6].Visible = !showingFavorites;
             
             if (itemIndex >= 0)
             {
@@ -1051,6 +1085,77 @@ namespace MyClipboard
             }
         }
 
+        private void EditItem_Click(object sender, EventArgs e)
+        {
+            // 使用保存的右键点击位置
+            int itemIndex = GetItemIndexAtPoint(lastContextMenuPosition);
+            
+            if (itemIndex >= 0)
+            {
+                List<ClipboardItem> displayList = GetFilteredDisplayList();
+                if (itemIndex < displayList.Count)
+                {
+                    ClipboardItem item = displayList[itemIndex];
+                    
+                    // 只允许编辑文本类型
+                    if (item.Format == "Text")
+                    {
+                        // 创建编辑对话框
+                        Form editForm = new Form();
+                        editForm.Text = "編輯內容";
+                        editForm.Size = new Size(500, 400);
+                        editForm.StartPosition = FormStartPosition.CenterParent;
+                        editForm.FormBorderStyle = FormBorderStyle.Sizable;
+                        editForm.MinimizeBox = false;
+                        editForm.MaximizeBox = true;
+                        editForm.TopMost = true;
+                        
+                        TextBox editBox = new TextBox();
+                        editBox.Multiline = true;
+                        editBox.ScrollBars = ScrollBars.Both;
+                        editBox.Dock = DockStyle.Fill;
+                        editBox.Font = new Font("Consolas", 10F);
+                        editBox.Text = item.Text;
+                        editBox.Padding = new Padding(5);
+                        editForm.Controls.Add(editBox);
+                        
+                        Panel buttonPanel = new Panel();
+                        buttonPanel.Height = 50;
+                        buttonPanel.Dock = DockStyle.Bottom;
+                        editForm.Controls.Add(buttonPanel);
+                        
+                        Button saveButton = new Button();
+                        saveButton.Text = "保存";
+                        saveButton.Size = new Size(80, 30);
+                        saveButton.Location = new Point(160, 10);
+                        saveButton.Click += (s, ev) => {
+                            item.Text = editBox.Text;
+                            item.Time = DateTime.Now;
+                            SaveHistory();
+                            listPanel.Invalidate();
+                            editForm.Close();
+                        };
+                        buttonPanel.Controls.Add(saveButton);
+                        
+                        Button cancelButton = new Button();
+                        cancelButton.Text = "取消";
+                        cancelButton.Size = new Size(80, 30);
+                        cancelButton.Location = new Point(260, 10);
+                        cancelButton.Click += (s, ev) => {
+                            editForm.Close();
+                        };
+                        buttonPanel.Controls.Add(cancelButton);
+                        
+                        editForm.ShowDialog(this);
+                    }
+                    else
+                    {
+                        MessageBox.Show("只能編輯文本類型的內容", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+            }
+        }
+        
         private void CopyItem_Click(object sender, EventArgs e)
         {
             // 使用保存的右键点击位置
@@ -1271,7 +1376,7 @@ namespace MyClipboard
                     favoritesButton.BackColor = Color.FromArgb(60, 60, 60);
                     favoritesButton.ForeColor = Color.White;
                 }
-                if (searchBox != null && searchBox.Text != "搜索...")
+                if (searchBox != null && searchBox.Text != "搜索……")
                 {
                     searchBox.BackColor = Color.FromArgb(40, 40, 40);
                     searchBox.ForeColor = Color.White;
@@ -1308,7 +1413,7 @@ namespace MyClipboard
                     favoritesButton.BackColor = Color.FromArgb(220, 220, 220);
                     favoritesButton.ForeColor = Color.Black;
                 }
-                if (searchBox != null && searchBox.Text != "搜索...")
+                if (searchBox != null && searchBox.Text != "搜索……")
                 {
                     searchBox.BackColor = Color.White;
                     searchBox.ForeColor = Color.Black;
@@ -1443,6 +1548,10 @@ namespace MyClipboard
                 if (imageList != null)
                 {
                     imageList.Dispose();
+                }
+                if (tooltipDelayTimer != null)
+                {
+                    tooltipDelayTimer.Dispose();
                 }
             }
             base.Dispose(disposing);
