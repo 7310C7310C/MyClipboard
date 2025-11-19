@@ -833,7 +833,8 @@ namespace MyClipboard
                 int newScrollBarTop = mouseInPanel.Y - (scrollBarPanel.Height / 2);
                 
                 // 限制滚动条在有效范围内
-                newScrollBarTop = Math.Max(0, Math.Min(newScrollBarTop, listPanel.ClientSize.Height - scrollBarPanel.Height));
+                int maxScrollBarTop = listPanel.ClientSize.Height - scrollBarPanel.Height;
+                newScrollBarTop = Math.Max(0, Math.Min(newScrollBarTop, maxScrollBarTop));
                 
                 // 根据滚动条位置计算scrollOffset
                 List<ClipboardItem> displayList = GetFilteredDisplayList();
@@ -841,9 +842,10 @@ namespace MyClipboard
                 int totalHeight = displayList.Count * ITEM_HEIGHT;
                 int maxScroll = Math.Max(0, totalHeight - listPanel.ClientSize.Height);
                 
-                if (listPanel.ClientSize.Height > scrollBarPanel.Height)
+                if (maxScrollBarTop > 0)
                 {
-                    scrollOffset = (newScrollBarTop * totalHeight) / listPanel.ClientSize.Height;
+                    // 正确计算scrollOffset：当滚动条在底部时，scrollOffset应该等于maxScroll
+                    scrollOffset = (newScrollBarTop * maxScroll) / maxScrollBarTop;
                     scrollOffset = Math.Max(0, Math.Min(scrollOffset, maxScroll));
                     listPanel.Invalidate();
                 }
@@ -875,10 +877,18 @@ namespace MyClipboard
             scrollBarPanel.Visible = true;
             // 設置最小高度為60px，確保大量記錄時也好操作
             int scrollBarHeight = Math.Max(60, (listPanel.ClientSize.Height * listPanel.ClientSize.Height) / totalHeight);
-            int scrollBarY = (scrollOffset * listPanel.ClientSize.Height) / totalHeight;
+            
+            // 计算滚动条位置
+            int maxScroll = Math.Max(0, totalHeight - listPanel.ClientSize.Height);
+            int maxScrollBarY = listPanel.ClientSize.Height - scrollBarHeight;
+            int scrollBarY = 0;
+            
+            if (maxScroll > 0 && maxScrollBarY > 0)
+            {
+                scrollBarY = (scrollOffset * maxScrollBarY) / maxScroll;
+            }
             
             // 确保滚动条不超出listPanel的范围
-            int maxScrollBarY = listPanel.ClientSize.Height - scrollBarHeight;
             scrollBarY = Math.Max(0, Math.Min(scrollBarY, maxScrollBarY));
 
             scrollBarPanel.Height = scrollBarHeight;
