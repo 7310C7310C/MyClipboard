@@ -182,7 +182,7 @@ namespace MyClipboard
             
             // ToolTip 延时定时器
             tooltipDelayTimer = new System.Windows.Forms.Timer();
-            tooltipDelayTimer.Interval = 800;
+            tooltipDelayTimer.Interval = 400;
             tooltipDelayTimer.Tick += TooltipDelayTimer_Tick;
 
             // 清單面板（自繪）
@@ -424,18 +424,23 @@ namespace MyClipboard
         {
             int itemIndex = GetItemIndexAtPoint(e.Location);
             
-            if (itemIndex >= 0 && itemIndex != pendingTooltipItemIndex)
+            if (itemIndex >= 0)
             {
-                // 停止之前的定时器
-                tooltipDelayTimer.Stop();
-                // 清除当前 tooltip
-                itemToolTip.SetToolTip(listPanel, "");
-                // 设置新的待显示项
-                pendingTooltipItemIndex = itemIndex;
-                // 启动延时
-                tooltipDelayTimer.Start();
+                if (itemIndex != pendingTooltipItemIndex)
+                {
+                    // 鼠标移到新项目
+                    tooltipDelayTimer.Stop();
+                    itemToolTip.SetToolTip(listPanel, "");
+                    pendingTooltipItemIndex = itemIndex;
+                    tooltipDelayTimer.Start();
+                }
+                // 如果在同一项上且定时器未运行，重新启动
+                else if (!tooltipDelayTimer.Enabled)
+                {
+                    tooltipDelayTimer.Start();
+                }
             }
-            else if (itemIndex < 0)
+            else
             {
                 // 鼠标离开所有项目
                 tooltipDelayTimer.Stop();
@@ -1366,7 +1371,14 @@ namespace MyClipboard
 
         private void About_Click(object sender, EventArgs e)
         {
+            // 临时取消主窗口置顶，避免遮挡弹窗
+            bool wasTopMost = this.TopMost;
+            this.TopMost = false;
+            
             MessageBox.Show("聯繫微信：676400126", "關於", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            
+            // 恢复置顶状态
+            this.TopMost = wasTopMost;
         }
 
         private void ApplyTheme()
