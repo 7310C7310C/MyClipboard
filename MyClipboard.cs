@@ -299,7 +299,7 @@ namespace MyClipboard
             
             // 托盤右鍵選單
             ContextMenuStrip trayMenu = new ContextMenuStrip();
-            trayMenu.Items.Add("顯示 / 隱藏", null, (s, ev) => {
+            trayMenu.Items.Add("顯示 / 隱藏（Ctrl + Alt + X）", null, (s, ev) => {
                 ToggleWindow();
             });
             
@@ -434,9 +434,9 @@ namespace MyClipboard
                     pendingTooltipItemIndex = itemIndex;
                     tooltipDelayTimer.Start();
                 }
-                // 如果在同一项上且定时器未运行，重新启动
                 else if (!tooltipDelayTimer.Enabled)
                 {
+                    // 在同一项上且定时器未运行，重新启动
                     tooltipDelayTimer.Start();
                 }
             }
@@ -586,6 +586,11 @@ namespace MyClipboard
             
             if (e.Button == MouseButtons.Right)
             {
+                // 右键点击时停止悬停提示，避免遮挡菜单
+                tooltipDelayTimer.Stop();
+                itemToolTip.SetToolTip(listPanel, "");
+                pendingTooltipItemIndex = -1;
+                
                 // 保存右键点击位置
                 lastContextMenuPosition = e.Location;
                 
