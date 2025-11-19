@@ -503,7 +503,7 @@ namespace MyClipboard
         {
             if (e.Button == MouseButtons.Left)
             {
-                isDragging = true;
+                // 不立即设置 isDragging，等待 MouseMove 时再判断
                 dragStartPoint = e.Location;
             }
         }
@@ -828,6 +828,17 @@ namespace MyClipboard
 
         private void Form_MouseMove(object sender, MouseEventArgs e)
         {
+            if (e.Button == MouseButtons.Left && !isDragging)
+            {
+                // 检测是否真的在拖动（移动超过5像素才算拖动）
+                int deltaX = Math.Abs(e.Location.X - dragStartPoint.X);
+                int deltaY = Math.Abs(e.Location.Y - dragStartPoint.Y);
+                if (deltaX > 5 || deltaY > 5)
+                {
+                    isDragging = true;
+                }
+            }
+            
             if (isDragging)
             {
                 Point currentScreenPos = Control.MousePosition;
@@ -1146,18 +1157,8 @@ namespace MyClipboard
                             string tempPath = Path.Combine(Path.GetTempPath(), "MyClipboard_" + DateTime.Now.Ticks + ".png");
                             File.WriteAllBytes(tempPath, item.Data);
                             
-                            // 尝试使用 Snipping Tool
-                            string snippingTool = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "SnippingTool.exe");
-                            
-                            if (File.Exists(snippingTool))
-                            {
-                                System.Diagnostics.Process.Start(snippingTool, "\""+tempPath+"\"");
-                            }
-                            else
-                            {
-                                // 如果没有 Snipping Tool，使用 Paint
-                                System.Diagnostics.Process.Start("mspaint.exe", "\""+tempPath+"\"");
-                            }
+                            // 使用 Paint 打开图片
+                            System.Diagnostics.Process.Start("mspaint.exe", "\""+tempPath+"\"");
                         }
                         catch (Exception ex)
                         {
