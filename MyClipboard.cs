@@ -87,7 +87,10 @@ namespace MyClipboard
         private Button minimizeButton;
         private Button favoritesButton;
         private TextBox searchBox;
+        private ToolTip itemToolTip;
+        private Point lastContextMenuPosition;
         private const int ITEM_HEIGHT = 60;
+        private const int SEARCH_BOX_HEIGHT = 35;
         private bool firstRun = true;
         private bool scrollBarDragging = false;
         private int scrollBarDragStart = 0;
@@ -167,6 +170,13 @@ namespace MyClipboard
             imageList = new ImageList();
             imageList.ImageSize = new Size(48, 48);
             imageList.ColorDepth = ColorDepth.Depth32Bit;
+            
+            // ToolTip 初始化
+            itemToolTip = new ToolTip();
+            itemToolTip.AutoPopDelay = 5000;
+            itemToolTip.InitialDelay = 300;
+            itemToolTip.ReshowDelay = 100;
+            itemToolTip.ShowAlways = true;
 
             // 清單面板（自繪）
             listPanel = new Panel();
@@ -184,6 +194,7 @@ namespace MyClipboard
             listPanel.MouseClick += ListPanel_MouseClick;
             listPanel.MouseDoubleClick += ListPanel_MouseDoubleClick;
             listPanel.MouseWheel += ListPanel_MouseWheel;
+            listPanel.MouseMove += ListPanel_MouseMove_ShowTooltip;
             contentPanel.Controls.Add(listPanel);
             
             // Material Design 滚动条
@@ -200,31 +211,6 @@ namespace MyClipboard
             scrollBarPanel.BringToFront();
             
             // 滚动条不再需要计时器隐藏
-            
-            // 搜索框
-            searchBox = new TextBox();
-            searchBox.Size = new Size(150, 30);
-            searchBox.Location = new Point(this.ClientSize.Width - 280, 8);
-            searchBox.Font = new Font("Consolas", 9F);
-            searchBox.ForeColor = Color.Gray;
-            searchBox.Text = "搜索...";
-            searchBox.TextChanged += SearchBox_TextChanged;
-            searchBox.GotFocus += (s, ev) => {
-                if (searchBox.Text == "搜索...")
-                {
-                    searchBox.Text = "";
-                    searchBox.ForeColor = isDarkTheme ? Color.White : Color.Black;
-                }
-            };
-            searchBox.LostFocus += (s, ev) => {
-                if (string.IsNullOrWhiteSpace(searchBox.Text))
-                {
-                    searchBox.Text = "搜索...";
-                    searchBox.ForeColor = Color.Gray;
-                }
-            };
-            contentPanel.Controls.Add(searchBox);
-            searchBox.BringToFront();
             
             // 收藏按钮
             favoritesButton = new Button();
@@ -255,6 +241,34 @@ namespace MyClipboard
             minimizeButton.Click += MinimizeButton_Click;
             contentPanel.Controls.Add(minimizeButton);
             minimizeButton.BringToFront();
+            
+            // 搜索框（底部）
+            searchBox = new TextBox();
+            searchBox.Dock = DockStyle.Bottom;
+            searchBox.Height = SEARCH_BOX_HEIGHT;
+            searchBox.Font = new Font("Consolas", 10F);
+            searchBox.ForeColor = Color.Gray;
+            searchBox.Text = "搜索...";
+            searchBox.BackColor = Color.FromArgb(40, 40, 40);
+            searchBox.BorderStyle = BorderStyle.FixedSingle;
+            searchBox.TextAlign = HorizontalAlignment.Left;
+            searchBox.Padding = new Padding(5);
+            searchBox.TextChanged += SearchBox_TextChanged;
+            searchBox.GotFocus += (s, ev) => {
+                if (searchBox.Text == "搜索...")
+                {
+                    searchBox.Text = "";
+                    searchBox.ForeColor = isDarkTheme ? Color.White : Color.Black;
+                }
+            };
+            searchBox.LostFocus += (s, ev) => {
+                if (string.IsNullOrWhiteSpace(searchBox.Text))
+                {
+                    searchBox.Text = "搜索...";
+                    searchBox.ForeColor = Color.Gray;
+                }
+            };
+            contentPanel.Controls.Add(searchBox);
 
             // 右鍵選單
             listContextMenu = new ContextMenuStrip();
@@ -392,6 +406,46 @@ namespace MyClipboard
             scrollOffset = 0;
             listPanel.Invalidate();
         }
+        
+        private void ListPanel_MouseMove_ShowTooltip(object sender, MouseEventArgs e)
+        {
+            int itemIndex = GetItemIndexAtPoint(e.Location);
+            if (itemIndex >= 0)
+            {
+                List<ClipboardItem> displayList = GetFilteredDisplayList();
+                if (itemIndex < displayList.Count)
+                {
+                    ClipboardItem item = displayList[itemIndex];
+                    string tooltipText = "";
+                    
+                    if (item.Format == "Image")
+                    {
+                        tooltipText = item.Text; // 图片尺寸信息
+                    }
+                    else if (!string.IsNullOrEmpty(item.Text))
+                    {
+                        // 显示前500个字符
+                        tooltipText = item.Text.Length > 500 
+                            ? item.Text.Substring(0, 500) + "..." 
+                            : item.Text;
+                    }
+                    else
+                    {
+                        tooltipText = item.Format;
+                    }
+                    
+                    // 只有当内容改变时才更新 ToolTip
+                    if (itemToolTip.GetToolTip(listPanel) != tooltipText)
+                    {
+                        itemToolTip.SetToolTip(listPanel, tooltipText);
+                    }
+                }
+            }
+            else
+            {
+                itemToolTip.SetToolTip(listPanel, "");
+            }
+        }
 
         private void ListPanel_Paint(object sender, PaintEventArgs e)
         {
@@ -491,6 +545,9 @@ namespace MyClipboard
         {
             if (e.Button == MouseButtons.Right)
             {
+                // 保存右键点击位置
+                lastContextMenuPosition = e.Location;
+                
                 int itemIndex = GetItemIndexAtPoint(e.Location);
                 if (itemIndex >= 0)
                 {
@@ -609,10 +666,10 @@ namespace MyClipboard
         private void FavoritesButton_Click(object sender, EventArgs e)
         {
             showingFavorites = !showingFavorites;
-            favoritesButton.Text = showingFavorites ? "返回首页" : "我的收藏";
+            favoritesButton.Text = showingFavorites ? "返回首頁" : "我的收藏";
             
             // 切换视图时清空搜索
-            searchBox.Text = "搜索...";
+            searchBox.Text = "搜索……";
             searchBox.ForeColor = Color.Gray;
             searchFilter = "";
             
@@ -996,50 +1053,63 @@ namespace MyClipboard
 
         private void CopyItem_Click(object sender, EventArgs e)
         {
-            // 由於不再使用ListView，需要其他方式選擇項目
-            // 暫時簡化，只處理最新項目
-            if (clipboardHistory.Count > 0)
+            // 使用保存的右键点击位置
+            int itemIndex = GetItemIndexAtPoint(lastContextMenuPosition);
+            
+            if (itemIndex >= 0)
             {
-                ClipboardItem item = clipboardHistory[0];
-                try
+                List<ClipboardItem> displayList = GetFilteredDisplayList();
+                if (itemIndex < displayList.Count)
                 {
-                    if (item.Format == "Text")
+                    ClipboardItem item = displayList[itemIndex];
+                    try
                     {
-                        Clipboard.SetText(item.Text);
-                    }
-                    else if (item.Format == "RTF")
-                    {
-                        string rtf = Encoding.UTF8.GetString(item.Data);
-                        Clipboard.SetData(DataFormats.Rtf, rtf);
-                    }
-                    else if (item.Format == "HTML")
-                    {
-                        string html = Encoding.UTF8.GetString(item.Data);
-                        Clipboard.SetData(DataFormats.Html, html);
-                    }
-                    else if (item.Format == "Image")
-                    {
-                        using (MemoryStream ms = new MemoryStream(item.Data))
+                        if (item.Format == "Text")
                         {
-                            Image img = Image.FromStream(ms);
-                            Clipboard.SetImage(img);
+                            Clipboard.SetText(item.Text);
+                        }
+                        else if (item.Format == "RTF")
+                        {
+                            string rtf = Encoding.UTF8.GetString(item.Data);
+                            Clipboard.SetData(DataFormats.Rtf, rtf);
+                        }
+                        else if (item.Format == "HTML")
+                        {
+                            string html = Encoding.UTF8.GetString(item.Data);
+                            Clipboard.SetData(DataFormats.Html, html);
+                        }
+                        else if (item.Format == "Image")
+                        {
+                            using (MemoryStream ms = new MemoryStream(item.Data))
+                            {
+                                Image img = Image.FromStream(ms);
+                                Clipboard.SetImage(img);
+                            }
                         }
                     }
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("複製失敗: " + ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("複製失敗: " + ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
                 }
             }
         }
 
         private void DeleteItem_Click(object sender, EventArgs e)
         {
-            if (clipboardHistory.Count > 0)
+            // 使用保存的右键点击位置
+            int itemIndex = GetItemIndexAtPoint(lastContextMenuPosition);
+            
+            if (itemIndex >= 0)
             {
-                clipboardHistory.RemoveAt(0);
-                RefreshListView();
-                SaveHistory();
+                List<ClipboardItem> displayList = GetFilteredDisplayList();
+                if (itemIndex < displayList.Count)
+                {
+                    ClipboardItem itemToDelete = displayList[itemIndex];
+                    clipboardHistory.Remove(itemToDelete);
+                    RefreshListView();
+                    SaveHistory();
+                }
             }
         }
 
@@ -1206,6 +1276,10 @@ namespace MyClipboard
                     searchBox.BackColor = Color.FromArgb(40, 40, 40);
                     searchBox.ForeColor = Color.White;
                 }
+                else if (searchBox != null)
+                {
+                    searchBox.BackColor = Color.FromArgb(40, 40, 40);
+                }
             }
             else
             {
@@ -1238,6 +1312,10 @@ namespace MyClipboard
                 {
                     searchBox.BackColor = Color.White;
                     searchBox.ForeColor = Color.Black;
+                }
+                else if (searchBox != null)
+                {
+                    searchBox.BackColor = Color.White;
                 }
             }
             
