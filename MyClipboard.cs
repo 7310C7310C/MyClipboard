@@ -202,7 +202,7 @@ namespace MyClipboard
                 // 确保滚动条不超过listPanel的高度
                 if (scrollBarPanel != null && scrollBarPanel.Height + scrollBarPanel.Top > listPanel.Height)
                 {
-                    int maxHeight = listPanel.Height - scrollBarPanel.Top;
+                searchBox.Padding = new Padding(10, 0, 0, 0);
                     if (maxHeight > 0)
                     {
                         scrollBarPanel.Height = Math.Min(scrollBarPanel.Height, maxHeight);
