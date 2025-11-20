@@ -195,14 +195,23 @@ namespace MyClipboard
             listPanel.KeyDown += MainForm_KeyDown;
             contentPanel.Controls.Add(listPanel);
             
-            // 调整listPanel大小以避开搜索框
+            // 调整listPanel大小以避开搜索框，并保持搜索框中文本垂直居中
             Action updateListPanelSize = () => {
                 listPanel.Location = new Point(0, 0);
                 listPanel.Size = new Size(contentPanel.ClientSize.Width, contentPanel.ClientSize.Height - SEARCH_BOX_HEIGHT);
+
+                // 根据当前字体计算搜索框垂直内边距，使文字在上下边中间
+                if (searchBox != null)
+                {
+                    int fontHeight = TextRenderer.MeasureText("A", searchBox.Font).Height;
+                    int vpad = Math.Max(0, (SEARCH_BOX_HEIGHT - fontHeight) / 2);
+                    searchBox.Padding = new Padding(10, vpad, 0, 0);
+                }
+
                 // 确保滚动条不超过listPanel的高度
                 if (scrollBarPanel != null && scrollBarPanel.Height + scrollBarPanel.Top > listPanel.Height)
                 {
-                searchBox.Padding = new Padding(10, 0, 0, 0);
+                    int maxHeight = listPanel.Height - scrollBarPanel.Top;
                     if (maxHeight > 0)
                     {
                         scrollBarPanel.Height = Math.Min(scrollBarPanel.Height, maxHeight);
