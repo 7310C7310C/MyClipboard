@@ -798,11 +798,11 @@ namespace MyClipboard
                                 
                                 Rectangle buttonRect = new Rectangle(buttonX, buttonY, buttonWidth, buttonHeight);
                                 
-                                // 如果点击在按钮区域内，不关闭预览并直接显示
+                                // 如果点击在按钮区域内，不关闭预览并直接显示，且不记录拖动起点
                                 if (buttonRect.Contains(e.Location))
                                 {
                                     ShowImagePreview();
-                                    return;
+                                    return; // 直接返回，不执行后续的dragStartPoint设置
                                 }
                             }
                         }
