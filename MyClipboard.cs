@@ -102,6 +102,7 @@ namespace MyClipboard
         private Color favoriteBgColor1Dark, favoriteBgColor2Dark;
         private int selectedIndex = -1;
         private Form imagePreviewForm = null;
+        private Button previewButton = null;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -606,7 +607,6 @@ namespace MyClipboard
             {
                 EnsureSelectedVisible();
                 listPanel.Invalidate();
-                ShowImagePreviewIfNeeded();
             }
         }
         
@@ -734,6 +734,32 @@ namespace MyClipboard
                     {
                         e.Graphics.DrawRectangle(highlightPen, new Rectangle(1, itemY + 1, panelWidth - 2, ITEM_HEIGHT - 2));
                     }
+                    
+                    // 如果是图片，在中央显示"預覽"按钮
+                    if (item.Format == "Image" && item.Data != null)
+                    {
+                        string buttonText = "預覽";
+                        Font buttonFont = new Font("微软雅黑", 10F, FontStyle.Bold);
+                        SizeF textSize = e.Graphics.MeasureString(buttonText, buttonFont);
+                        int buttonWidth = (int)textSize.Width + 20;
+                        int buttonHeight = (int)textSize.Height + 10;
+                        int buttonX = (panelWidth - buttonWidth) / 2;
+                        int buttonY = itemY + (ITEM_HEIGHT - buttonHeight) / 2;
+                        
+                        Rectangle buttonRect = new Rectangle(buttonX, buttonY, buttonWidth, buttonHeight);
+                        
+                        // 绘制按钮背景和边框
+                        using (SolidBrush buttonBrush = new SolidBrush(Color.FromArgb(0, 120, 215)))
+                        using (Pen buttonPen = new Pen(Color.FromArgb(0, 90, 180), 2))
+                        {
+                            e.Graphics.FillRectangle(buttonBrush, buttonRect);
+                            e.Graphics.DrawRectangle(buttonPen, buttonRect);
+                        }
+                        
+                        // 绘制按钮文字
+                        TextRenderer.DrawText(e.Graphics, buttonText, buttonFont, buttonRect,
+                            Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                    }
                 }
                 
                 TextRenderer.DrawText(e.Graphics, displayText, listPanel.Font, textRect, 
@@ -767,10 +793,41 @@ namespace MyClipboard
                 int itemIndex = GetItemIndexAtPoint(e.Location);
                 if (itemIndex >= 0)
                 {
+                    // 检查是否点击了预览按钮区域
+                    List<ClipboardItem> displayList = GetFilteredDisplayList();
+                    if (itemIndex < displayList.Count && itemIndex == selectedIndex)
+                    {
+                        ClipboardItem item = displayList[itemIndex];
+                        if (item.Format == "Image" && item.Data != null)
+                        {
+                            // 计算按钮区域
+                            int itemY = itemIndex * ITEM_HEIGHT - scrollOffset;
+                            int panelWidth = listPanel.ClientSize.Width;
+                            
+                            using (Graphics g = listPanel.CreateGraphics())
+                            {
+                                Font buttonFont = new Font("微软雅黑", 10F, FontStyle.Bold);
+                                SizeF textSize = g.MeasureString("預覽", buttonFont);
+                                int buttonWidth = (int)textSize.Width + 20;
+                                int buttonHeight = (int)textSize.Height + 10;
+                                int buttonX = (panelWidth - buttonWidth) / 2;
+                                int buttonY = itemY + (ITEM_HEIGHT - buttonHeight) / 2;
+                                
+                                Rectangle buttonRect = new Rectangle(buttonX, buttonY, buttonWidth, buttonHeight);
+                                
+                                // 如果点击在按钮区域内，显示预览
+                                if (buttonRect.Contains(e.Location))
+                                {
+                                    ShowImagePreview();
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    
                     selectedIndex = itemIndex;
                     listPanel.Invalidate();
                     listPanel.Focus();
-                    ShowImagePreviewIfNeeded();
                 }
             }
             else if (e.Button == MouseButtons.Right)
@@ -1288,7 +1345,6 @@ namespace MyClipboard
             {
                 EnsureSelectedVisible();
                 listPanel.Invalidate();
-                ShowImagePreviewIfNeeded();
             }
 
             return handled || base.ProcessCmdKey(ref msg, keyData);
@@ -1956,7 +2012,7 @@ namespace MyClipboard
             }
         }
 
-        private void ShowImagePreviewIfNeeded()
+        private void ShowImagePreview()
         {
             // 关闭已有的预览窗口
             if (imagePreviewForm != null && !imagePreviewForm.IsDisposed)
@@ -1998,7 +2054,7 @@ namespace MyClipboard
                 if (scale > 1) scale = 1; // 不放大小图
                 int previewWidth = (int)(previewImage.Width * scale);
                 int previewHeight = (int)(previewImage.Height * scale);
-                imagePreviewForm.Size = new Size(previewWidth, previewHeight);
+                imagePreviewForm.Size = new Size(previewWidth + 4, previewHeight + 4); // 加4px边框
 
                 // 计算预览窗口位置（尽量在主窗口右侧，不遮挡且不超出屏幕）
                 Screen currentScreen = Screen.FromControl(this);
@@ -2008,9 +2064,9 @@ namespace MyClipboard
                 int previewY = this.Top;
 
                 // 如果右侧空间不足，放在左侧
-                if (previewX + previewWidth > workingArea.Right)
+                if (previewX + imagePreviewForm.Width > workingArea.Right)
                 {
-                    previewX = this.Left - previewWidth - 10;
+                    previewX = this.Left - imagePreviewForm.Width - 10;
                 }
                 
                 // 如果左侧也不足，放在主窗口上方或下方
@@ -2020,26 +2076,36 @@ namespace MyClipboard
                     previewY = this.Bottom + 10;
                     
                     // 如果下方也不足，放在上方
-                    if (previewY + previewHeight > workingArea.Bottom)
+                    if (previewY + imagePreviewForm.Height > workingArea.Bottom)
                     {
-                        previewY = this.Top - previewHeight - 10;
+                        previewY = this.Top - imagePreviewForm.Height - 10;
                     }
                 }
 
                 // 确保不超出屏幕边界
                 if (previewX < workingArea.Left) previewX = workingArea.Left;
                 if (previewY < workingArea.Top) previewY = workingArea.Top;
-                if (previewX + previewWidth > workingArea.Right) previewX = workingArea.Right - previewWidth;
-                if (previewY + previewHeight > workingArea.Bottom) previewY = workingArea.Bottom - previewHeight;
+                if (previewX + imagePreviewForm.Width > workingArea.Right) previewX = workingArea.Right - imagePreviewForm.Width;
+                if (previewY + imagePreviewForm.Height > workingArea.Bottom) previewY = workingArea.Bottom - imagePreviewForm.Height;
 
                 imagePreviewForm.Location = new Point(previewX, previewY);
 
-                // 添加图片显示
+                // 添加图片显示（带2px边框）
                 PictureBox pictureBox = new PictureBox();
                 pictureBox.Image = previewImage;
                 pictureBox.SizeMode = PictureBoxSizeMode.Zoom;
-                pictureBox.Dock = DockStyle.Fill;
+                pictureBox.Location = new Point(2, 2);
+                pictureBox.Size = new Size(previewWidth, previewHeight);
+                pictureBox.BackColor = Color.Black;
                 imagePreviewForm.Controls.Add(pictureBox);
+
+                // 绘制边框（与选中项相同的蓝色）
+                imagePreviewForm.Paint += (s, ev) => {
+                    using (Pen borderPen = new Pen(Color.FromArgb(0, 120, 215), 2))
+                    {
+                        ev.Graphics.DrawRectangle(borderPen, 0, 0, imagePreviewForm.Width - 1, imagePreviewForm.Height - 1);
+                    }
+                };
 
                 // 点击预览窗口关闭
                 imagePreviewForm.Click += (s, ev) => {
