@@ -2437,13 +2437,14 @@ namespace MyClipboard
 
         protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
         {
-            // 使用白色或浅灰色绘制箭头，以便在深色背景上可见
-            Color arrowColor = Color.White;
+            // 使用与菜单项相同的前景色绘制更小的三角形箭头
+            Color arrowColor = (e.Item != null) ? e.Item.ForeColor : Color.White;
             Rectangle r = e.ArrowRectangle;
+            // 更小的三角形，增加内边距
             Point[] pts = new Point[] {
-                new Point(r.Left + 2, r.Top + 2),
-                new Point(r.Right - 2, r.Top + r.Height / 2),
-                new Point(r.Left + 2, r.Bottom - 2)
+                new Point(r.Left + 3, r.Top + 3),
+                new Point(r.Right - 4, r.Top + r.Height / 2),
+                new Point(r.Left + 3, r.Bottom - 3)
             };
             using (SolidBrush b = new SolidBrush(arrowColor))
             {
@@ -2462,13 +2463,13 @@ namespace MyClipboard
 
         protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
         {
-            // 使用与深色渲染相同的三角形形状，但颜色为深灰色
-            Color arrowColor = Color.FromArgb(64, 64, 64);
+            // 使用与菜单项相同的前景色绘制更小的三角形箭头
+            Color arrowColor = (e.Item != null) ? e.Item.ForeColor : Color.FromArgb(64, 64, 64);
             Rectangle r = e.ArrowRectangle;
             Point[] pts = new Point[] {
-                new Point(r.Left + 2, r.Top + 2),
-                new Point(r.Right - 2, r.Top + r.Height / 2),
-                new Point(r.Left + 2, r.Bottom - 2)
+                new Point(r.Left + 3, r.Top + 3),
+                new Point(r.Right - 4, r.Top + r.Height / 2),
+                new Point(r.Left + 3, r.Bottom - 3)
             };
             using (SolidBrush b = new SolidBrush(arrowColor))
             {
