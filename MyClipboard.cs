@@ -341,6 +341,7 @@ namespace MyClipboard
             // 右鍵選單
             listContextMenu = new ContextMenuStrip();
             listContextMenu.Items.Add("收藏", null, ToggleFavorite_Click);
+            listContextMenu.Items.Add("預覽", null, PreviewItem_Click);
             listContextMenu.Items.Add(new ToolStripSeparator());
             listContextMenu.Items.Add("編輯", null, EditItem_Click);
             listContextMenu.Items.Add("複製", null, CopyItem_Click);
@@ -769,25 +770,6 @@ namespace MyClipboard
                     selectedIndex = itemIndex;
                     listPanel.Invalidate();
                     listPanel.Focus();
-                    
-                    // 根据选中项类型显示或关闭预览
-                    List<ClipboardItem> displayList = GetFilteredDisplayList();
-                    if (itemIndex < displayList.Count)
-                    {
-                        ClipboardItem item = displayList[itemIndex];
-                        if (item.Format == "Image" && item.Data != null)
-                        {
-                            ShowImagePreview();
-                        }
-                        else
-                        {
-                            CloseImagePreview(this, EventArgs.Empty);
-                        }
-                    }
-                }
-                else
-                {
-                    CloseImagePreview(this, EventArgs.Empty);
                 }
             }
             else if (e.Button == MouseButtons.Right)
@@ -990,6 +972,34 @@ namespace MyClipboard
             }
         }
         
+        private void PreviewItem_Click(object sender, EventArgs e)
+        {
+            Point mousePos = listPanel.PointToClient(Control.MousePosition);
+            int itemIndex = GetItemIndexAtPoint(mousePos);
+            
+            if (itemIndex >= 0)
+            {
+                List<ClipboardItem> displayList = GetFilteredDisplayList();
+                
+                if (itemIndex < displayList.Count)
+                {
+                    ClipboardItem item = displayList[itemIndex];
+                    
+                    if (item.Format == "Image" && item.Data != null)
+                    {
+                        // 图片预览
+                        selectedIndex = itemIndex;
+                        ShowImagePreview();
+                    }
+                    else if (!string.IsNullOrEmpty(item.Text))
+                    {
+                        // 文字预览
+                        ShowTextPreview(item.Text);
+                    }
+                }
+            }
+        }
+        
         private List<ClipboardItem> GetFilteredDisplayList()
         {
             List<ClipboardItem> displayList = clipboardHistory;
@@ -1035,6 +1045,13 @@ namespace MyClipboard
                     if (lightItem != null) lightItem.Checked = !isDarkTheme;
                     if (darkItem != null) darkItem.Checked = isDarkTheme;
                 }
+            }
+            
+            // 预览菜单项始终显示，无论是否选中了项
+            var previewItem = listContextMenu.Items.Cast<ToolStripItem>().FirstOrDefault(it => it.Text == "預覽");
+            if (previewItem != null)
+            {
+                previewItem.Visible = (itemIndex >= 0);
             }
             
             if (itemIndex >= 0)
@@ -1311,27 +1328,10 @@ namespace MyClipboard
                     break;
             }
 
-            if (handled)
+            if (handled && oldIndex != selectedIndex)
             {
-                if (oldIndex != selectedIndex)
-                {
-                    EnsureSelectedVisible();
-                    listPanel.Invalidate();
-                }
-                
-                // 每次按键都更新预览状态
-                if (selectedIndex >= 0 && selectedIndex < displayList.Count)
-                {
-                    ClipboardItem item = displayList[selectedIndex];
-                    if (item.Format == "Image" && item.Data != null)
-                    {
-                        ShowImagePreview();
-                    }
-                    else
-                    {
-                        CloseImagePreview(this, EventArgs.Empty);
-                    }
-                }
+                EnsureSelectedVisible();
+                listPanel.Invalidate();
             }
 
             return handled || base.ProcessCmdKey(ref msg, keyData);
@@ -2127,6 +2127,33 @@ namespace MyClipboard
                 imagePreviewForm.Dispose();
                 imagePreviewForm = null;
             }
+        }
+
+        private void ShowTextPreview(string text)
+        {
+            // 创建文字预览窗口
+            Form textPreviewForm = new Form();
+            textPreviewForm.Text = "文字預覽";
+            textPreviewForm.StartPosition = FormStartPosition.CenterParent;
+            textPreviewForm.Size = new Size(600, 400);
+            textPreviewForm.MinimizeBox = false;
+            textPreviewForm.MaximizeBox = false;
+            textPreviewForm.ShowInTaskbar = false;
+            textPreviewForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+
+            // 添加文本框
+            TextBox textBox = new TextBox();
+            textBox.Multiline = true;
+            textBox.ReadOnly = true;
+            textBox.ScrollBars = ScrollBars.Both;
+            textBox.Dock = DockStyle.Fill;
+            textBox.Text = text;
+            textBox.Font = new Font("Microsoft YaHei UI", 10F);
+            textBox.BackColor = isDarkTheme ? Color.FromArgb(30, 30, 30) : Color.White;
+            textBox.ForeColor = isDarkTheme ? Color.FromArgb(220, 220, 220) : Color.Black;
+            
+            textPreviewForm.Controls.Add(textBox);
+            textPreviewForm.ShowDialog(this);
         }
 
         private void SaveHistory()
