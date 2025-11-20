@@ -101,6 +101,11 @@ namespace MyClipboard
         private Color favoriteBgColor1Light, favoriteBgColor2Light;
         private Color favoriteBgColor1Dark, favoriteBgColor2Dark;
         private int selectedIndex = -1;
+        // Image preview popup
+        private Form imagePreviewForm;
+        private PictureBox imagePreviewBox;
+        private const int PREVIEW_MAX_WIDTH = 480;
+        private const int PREVIEW_MAX_HEIGHT = 360;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -472,6 +477,13 @@ namespace MyClipboard
             this.Load += MainForm_Load;
             this.Deactivate += MainForm_Deactivate;
             this.KeyDown += MainForm_KeyDown;
+            this.Move += (s, ev) => {
+                // 重新定位图片预览（如果存在）
+                if (imagePreviewForm != null && imagePreviewForm.Visible)
+                {
+                    ShowImagePreviewForSelected();
+                }
+            };
         }
 
         private void MainForm_Load(object sender, EventArgs e)
@@ -766,6 +778,7 @@ namespace MyClipboard
                 {
                     selectedIndex = itemIndex;
                     listPanel.Invalidate();
+                    ShowImagePreviewForSelected();
                     listPanel.Focus();
                 }
             }
@@ -779,6 +792,7 @@ namespace MyClipboard
                 {
                     selectedIndex = itemIndex;
                     listPanel.Invalidate();
+                    ShowImagePreviewForSelected();
                     listContextMenu.Show(listPanel, e.Location);
                 }
                 else
@@ -841,6 +855,9 @@ namespace MyClipboard
             int totalHeight = displayList.Count * ITEM_HEIGHT;
             int maxScroll = Math.Max(0, totalHeight - listPanel.ClientSize.Height);
             scrollOffset = Math.Max(0, Math.Min(scrollOffset, maxScroll));
+
+            // 更新图片预览（如果选中的是图片）
+            ShowImagePreviewForSelected();
         }
 
         private void ScrollBar_MouseDown(object sender, MouseEventArgs e)
@@ -1033,6 +1050,7 @@ namespace MyClipboard
         {
             if (this.Visible)
             {
+                HideImagePreview();
                 this.Hide();
             }
             else
@@ -1047,6 +1065,8 @@ namespace MyClipboard
                 listPanel.Invalidate();
                 // 让列表面板获得焦点
                 listPanel.Focus();
+                // 如果当前选中为图片，显示预览
+                ShowImagePreviewForSelected();
             }
         }
 
@@ -1117,7 +1137,18 @@ namespace MyClipboard
             if (isDragging)
             {
                 Point currentScreenPos = Control.MousePosition;
-                this.Location = new Point(currentScreenPos.X - dragStartPoint.X, currentScreenPos.Y - dragStartPoint.Y);
+                // 限制窗口位置在屏幕工作区内，避免遮挡任务栏或超出屏幕
+                Rectangle work = Screen.FromControl(this).WorkingArea;
+                int newX = currentScreenPos.X - dragStartPoint.X;
+                int newY = currentScreenPos.Y - dragStartPoint.Y;
+                newX = Math.Max(work.Left, Math.Min(newX, work.Right - this.Width));
+                newY = Math.Max(work.Top, Math.Min(newY, work.Bottom - this.Height));
+                this.Location = new Point(newX, newY);
+                // 如果预览处于显示状态，重新定位它
+                if (imagePreviewForm != null && imagePreviewForm.Visible)
+                {
+                    ShowImagePreviewForSelected();
+                }
             }
         }
 
@@ -1775,6 +1806,114 @@ namespace MyClipboard
 
         private void About_Click(object sender, EventArgs e)
         {
+
+        private void EnsureImagePreviewForm()
+        {
+            if (imagePreviewForm != null)
+                return;
+
+            imagePreviewForm = new Form();
+            imagePreviewForm.FormBorderStyle = FormBorderStyle.None;
+            imagePreviewForm.StartPosition = FormStartPosition.Manual;
+            imagePreviewForm.ShowInTaskbar = false;
+            imagePreviewForm.TopMost = true;
+            imagePreviewForm.BackColor = Color.Black;
+
+            imagePreviewBox = new PictureBox();
+            imagePreviewBox.Dock = DockStyle.Fill;
+            imagePreviewBox.SizeMode = PictureBoxSizeMode.Zoom;
+            imagePreviewForm.Controls.Add(imagePreviewBox);
+        }
+
+        private void ShowImagePreviewForSelected()
+        {
+            try
+            {
+                List<ClipboardItem> displayList = GetFilteredDisplayList();
+                if (selectedIndex < 0 || selectedIndex >= displayList.Count)
+                {
+                    HideImagePreview();
+                    return;
+                }
+
+                var item = displayList[selectedIndex];
+                if (item == null || item.Format != "Image" || item.Data == null)
+                {
+                    HideImagePreview();
+                    return;
+                }
+
+                EnsureImagePreviewForm();
+
+                // 加载图片
+                Image img;
+                using (MemoryStream ms = new MemoryStream(item.Data))
+                {
+                    img = Image.FromStream(ms);
+                }
+
+                // 计算预览尺寸
+                int previewW = Math.Min(PREVIEW_MAX_WIDTH, img.Width);
+                int previewH = Math.Min(PREVIEW_MAX_HEIGHT, img.Height);
+                double ratio = Math.Min((double)previewW / img.Width, (double)previewH / img.Height);
+                previewW = Math.Max(64, (int)(img.Width * ratio));
+                previewH = Math.Max(64, (int)(img.Height * ratio));
+
+                imagePreviewBox.Image = img;
+                imagePreviewForm.Size = new Size(previewW, previewH);
+
+                // 计算目标位置：优先放在主窗体右侧，否则左侧；垂直以选中项中心为准
+                Rectangle work = Screen.FromControl(this).WorkingArea;
+
+                int itemY = selectedIndex * ITEM_HEIGHT - scrollOffset;
+                Point itemScreen = listPanel.PointToScreen(new Point(0, itemY));
+                int itemCenterY = itemScreen.Y + ITEM_HEIGHT / 2;
+
+                int xRight = this.Right + 8;
+                int xLeft = this.Left - previewW - 8;
+
+                int px = xRight;
+                if (xRight + previewW > work.Right)
+                {
+                    px = xLeft;
+                }
+                // 如果两边都不够，放在工作区内靠右的位置
+                if (px < work.Left)
+                    px = Math.Max(work.Left, work.Right - previewW - 8);
+
+                int py = itemCenterY - previewH / 2;
+                py = Math.Max(work.Top, Math.Min(py, work.Bottom - previewH));
+
+                imagePreviewForm.Location = new Point(px, py);
+                if (!imagePreviewForm.Visible)
+                {
+                    imagePreviewForm.Show(this);
+                }
+                else
+                {
+                    imagePreviewForm.Refresh();
+                }
+            }
+            catch
+            {
+                HideImagePreview();
+            }
+        }
+
+        private void HideImagePreview()
+        {
+            try
+            {
+                if (imagePreviewForm != null)
+                {
+                    if (!imagePreviewForm.IsDisposed)
+                    {
+                        imagePreviewForm.Hide();
+                    }
+                }
+            }
+            catch { }
+        }
             // 临时取消主窗口置顶，避免遮挡弹窗
             bool wasTopMost = this.TopMost;
             this.TopMost = false;
@@ -2031,6 +2170,8 @@ namespace MyClipboard
             UnregisterHotKey(this.Handle, HOTKEY_ID);
             trayIcon.Visible = false;
             
+            // 隐藏并释放预览
+            HideImagePreview();
             if (clipboardMonitor != null)
             {
                 clipboardMonitor.Dispose();
@@ -2054,6 +2195,10 @@ namespace MyClipboard
                 if (imageList != null)
                 {
                     imageList.Dispose();
+                }
+                if (imagePreviewForm != null)
+                {
+                    try { imagePreviewForm.Dispose(); } catch { }
                 }
             }
             base.Dispose(disposing);
