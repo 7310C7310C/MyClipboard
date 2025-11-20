@@ -1182,7 +1182,7 @@ namespace MyClipboard
 
         private void Form_MouseMove(object sender, MouseEventArgs e)
         {
-            if (e.Button == MouseButtons.Left && !isDragging)
+            if (e.Button == MouseButtons.Left && !isDragging && dragStartPoint != Point.Empty)
             {
                 // 检测是否真的在拖动（移动超过5像素才算拖动）
                 int deltaX = Math.Abs(e.Location.X - dragStartPoint.X);
@@ -1221,6 +1221,9 @@ namespace MyClipboard
                 this.Location = new Point(x, y);
                 SaveWindowPosition();
             }
+            
+            // 重置拖动起点，避免误触发
+            dragStartPoint = Point.Empty;
         }
 
         protected override void WndProc(ref Message m)
