@@ -284,7 +284,7 @@ namespace MyClipboard
             
             searchBox = new TextBox();
             searchBox.Dock = DockStyle.Fill;
-            searchBox.Font = new Font("微软雅黑", 18F);
+            searchBox.Font = new Font("Consolas", 16F);
             searchBox.ForeColor = Color.FromArgb(180, 210, 240);
             searchBox.Text = "搜索……";
             searchBox.BackColor = Color.FromArgb(0, 90, 158);
@@ -345,6 +345,31 @@ namespace MyClipboard
             listContextMenu.Items.Add("複製", null, CopyItem_Click);
             listContextMenu.Items.Add("刪除", null, DeleteItem_Click);
             listContextMenu.Items.Add(new ToolStripSeparator());
+
+            // 在右键菜单中加入“切換主題”及二级菜单（放在“幫助”之前）
+            ToolStripMenuItem ctxThemeMenu = new ToolStripMenuItem("切換主題");
+            ctxThemeMenu.Name = "ctxThemeMenu";
+            ToolStripMenuItem ctxLightTheme = new ToolStripMenuItem("淺色");
+            ctxLightTheme.Name = "ctxLightTheme";
+            ctxLightTheme.Click += (s, ev) => {
+                isDarkTheme = false;
+                ApplyTheme();
+                SaveSettings();
+                listPanel.Invalidate();
+            };
+            ToolStripMenuItem ctxDarkTheme = new ToolStripMenuItem("深色");
+            ctxDarkTheme.Name = "ctxDarkTheme";
+            ctxDarkTheme.Click += (s, ev) => {
+                isDarkTheme = true;
+                ApplyTheme();
+                SaveSettings();
+                listPanel.Invalidate();
+            };
+            ctxThemeMenu.DropDownItems.Add(ctxLightTheme);
+            ctxThemeMenu.DropDownItems.Add(ctxDarkTheme);
+
+            listContextMenu.Items.Add(ctxThemeMenu);
+
             listContextMenu.Items.Add("幫助", null, Help_Click);
             listContextMenu.Items.Add("清空", null, ClearAll_Click);
             listContextMenu.Opening += ListContextMenu_Opening;
@@ -960,8 +985,23 @@ namespace MyClipboard
             Point mousePos = listPanel.PointToClient(Control.MousePosition);
             int itemIndex = GetItemIndexAtPoint(mousePos);
             
-            // 在收藏界面隐藏"清空"选项（索引调整为6）
-            listContextMenu.Items[6].Visible = !showingFavorites;
+            // 在收藏界面隐藏"清空"选项（索引调整为8，因为加入了切換主題子菜单）
+            if (listContextMenu.Items.Count > 8)
+            {
+                listContextMenu.Items[8].Visible = !showingFavorites;
+            }
+
+            // 同步右键菜单中主题子菜单的选中状态
+            var found = listContextMenu.Items.Find("ctxThemeMenu", false);
+            if (found != null && found.Length > 0)
+            {
+                var themeMenu = found[0] as ToolStripMenuItem;
+                if (themeMenu != null && themeMenu.DropDownItems.Count >= 2)
+                {
+                    themeMenu.DropDownItems[0].Checked = !isDarkTheme; // 淺色
+                    themeMenu.DropDownItems[1].Checked = isDarkTheme;  // 深色
+                }
+            }
             
             if (itemIndex >= 0)
             {
