@@ -996,6 +996,16 @@ namespace MyClipboard
             if (clearItem != null)
             {
                 clearItem.Visible = !showingFavorites;
+                // 隐藏与之相邻的分隔线（如果存在）
+                int idx = listContextMenu.Items.IndexOf(clearItem);
+                if (idx > 0 && listContextMenu.Items[idx - 1] is ToolStripSeparator)
+                {
+                    listContextMenu.Items[idx - 1].Visible = !showingFavorites;
+                }
+                if (idx + 1 < listContextMenu.Items.Count && listContextMenu.Items[idx + 1] is ToolStripSeparator)
+                {
+                    listContextMenu.Items[idx + 1].Visible = !showingFavorites;
+                }
             }
 
             // 同步右键菜单中主题子菜单的选中状态
@@ -1701,13 +1711,71 @@ namespace MyClipboard
             if (unfavoritedItems.Count == 0)
                 return;
                 
-            DialogResult result = MessageBox.Show(
-                "確定要清空所有未收藏的記錄嗎？",
-                "確認清空",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-                
-            if (result == DialogResult.Yes)
+            // 使用自定义对话框（相对于主界面居中），并支持深色主题
+            bool wasTopMost = this.TopMost;
+            this.TopMost = false;
+
+            Form confirmForm = new Form();
+            confirmForm.Text = "確認清空";
+            confirmForm.Size = new Size(360, 150);
+            confirmForm.StartPosition = FormStartPosition.Manual;
+            confirmForm.Location = new Point(this.Location.X + (this.Width - confirmForm.Width) / 2,
+                                             this.Location.Y + (this.Height - confirmForm.Height) / 2);
+            confirmForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+            confirmForm.MaximizeBox = false;
+            confirmForm.MinimizeBox = false;
+            confirmForm.TopMost = true;
+
+            if (isDarkTheme)
+            {
+                confirmForm.BackColor = Color.FromArgb(45, 45, 48);
+                confirmForm.ForeColor = Color.White;
+            }
+
+            Label msg = new Label();
+            msg.Text = "確定要清空所有未收藏的記錄嗎？";
+            msg.AutoSize = false;
+            msg.Size = new Size(320, 50);
+            msg.Location = new Point(20, 15);
+            msg.Font = new Font("Consolas", 10F);
+            msg.TextAlign = ContentAlignment.MiddleLeft;
+            if (isDarkTheme) msg.ForeColor = Color.White;
+            confirmForm.Controls.Add(msg);
+
+            Button yesBtn = new Button();
+            yesBtn.Text = "是";
+            yesBtn.Size = new Size(80, 30);
+            yesBtn.Location = new Point(90, 75);
+            yesBtn.DialogResult = DialogResult.Yes;
+            if (isDarkTheme)
+            {
+                yesBtn.BackColor = Color.FromArgb(60, 60, 60);
+                yesBtn.ForeColor = Color.White;
+                yesBtn.FlatStyle = FlatStyle.Flat;
+                yesBtn.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 80);
+            }
+            confirmForm.Controls.Add(yesBtn);
+
+            Button noBtn = new Button();
+            noBtn.Text = "否";
+            noBtn.Size = new Size(80, 30);
+            noBtn.Location = new Point(190, 75);
+            noBtn.DialogResult = DialogResult.No;
+            if (isDarkTheme)
+            {
+                noBtn.BackColor = Color.FromArgb(60, 60, 60);
+                noBtn.ForeColor = Color.White;
+                noBtn.FlatStyle = FlatStyle.Flat;
+                noBtn.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 80);
+            }
+            confirmForm.Controls.Add(noBtn);
+
+            DialogResult dr = confirmForm.ShowDialog(this);
+
+            // 恢复置顶状态
+            this.TopMost = wasTopMost;
+
+            if (dr == DialogResult.Yes)
             {
                 foreach (var item in unfavoritedItems)
                 {
@@ -2143,11 +2211,13 @@ namespace MyClipboard
         {
             if (cms == null)
                 return;
-
+            ToolStripProfessionalRenderer renderer;
             if (dark)
-                cms.Renderer = new ToolStripProfessionalRenderer(new DarkColorTable());
+                renderer = new DarkRenderer(new DarkColorTable());
             else
-                cms.Renderer = new ToolStripProfessionalRenderer();
+                renderer = new ToolStripProfessionalRenderer();
+
+            cms.Renderer = renderer;
 
             if (dark)
             {
@@ -2163,6 +2233,16 @@ namespace MyClipboard
             foreach (ToolStripItem item in cms.Items)
             {
                 ApplyMenuItemTheme(item, dark);
+                // 如果是带下拉的菜单，确保其下拉菜单也使用相同的 renderer
+                var menuItem = item as ToolStripMenuItem;
+                if (menuItem != null && menuItem.HasDropDownItems && menuItem.DropDown != null)
+                {
+                    menuItem.DropDown.Renderer = renderer;
+                    foreach (ToolStripItem sub in menuItem.DropDownItems)
+                    {
+                        ApplyMenuItemTheme(sub, dark);
+                    }
+                }
             }
         }
 
@@ -2349,6 +2429,31 @@ namespace MyClipboard
         public override Color ToolStripDropDownBackground
         {
             get { return Color.FromArgb(45, 45, 48); }
+        }
+    }
+
+    // 自定义 Renderer，用于绘制深色模式下的箭头为浅色
+    public class DarkRenderer : ToolStripProfessionalRenderer
+    {
+        public DarkRenderer(ProfessionalColorTable table) : base(table)
+        {
+        }
+
+        protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
+        {
+            // 使用白色或浅灰色绘制箭头，以便在深色背景上可见
+            Color arrowColor = Color.White;
+            Rectangle r = e.ArrowRectangle;
+            Point[] pts = new Point[] {
+                new Point(r.Left + 2, r.Top + 2),
+                new Point(r.Right - 2, r.Top + r.Height / 2),
+                new Point(r.Left + 2, r.Bottom - 2)
+            };
+            using (SolidBrush b = new SolidBrush(arrowColor))
+            {
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                e.Graphics.FillPolygon(b, pts);
+            }
         }
     }
 
