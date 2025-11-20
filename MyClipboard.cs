@@ -102,6 +102,7 @@ namespace MyClipboard
         private Color favoriteBgColor1Dark, favoriteBgColor2Dark;
         private int selectedIndex = -1;
         private Form imagePreviewForm = null;
+        private bool previewEventHandlersAttached = false;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -1989,15 +1990,6 @@ namespace MyClipboard
             }
         }
 
-        // 自定义预览窗口类，重写 ShowWithoutActivation 属性以防止夺取焦点
-        private class PreviewForm : Form
-        {
-            protected override bool ShowWithoutActivation
-            {
-                get { return true; }
-            }
-        }
-
         private void ShowImagePreview()
         {
             // 关闭已有的预览窗口
@@ -2027,12 +2019,13 @@ namespace MyClipboard
                 }
 
                 // 创建预览窗口
-                imagePreviewForm = new PreviewForm();
+                imagePreviewForm = new NonActivatingPreviewForm();
                 imagePreviewForm.FormBorderStyle = FormBorderStyle.None;
                 imagePreviewForm.BackColor = Color.Black;
                 imagePreviewForm.StartPosition = FormStartPosition.Manual;
                 imagePreviewForm.TopMost = true;
                 imagePreviewForm.ShowInTaskbar = false;
+                imagePreviewForm.Owner = this;
 
                 // 计算预览窗口大小（最大400x400，保持宽高比）
                 int maxSize = 400;
@@ -2102,10 +2095,18 @@ namespace MyClipboard
                 };
 
                 // 主窗口失去焦点或隐藏时关闭预览
-                this.Deactivate += CloseImagePreview;
-                this.VisibleChanged += CloseImagePreview;
+                if (!previewEventHandlersAttached)
+                {
+                    this.Deactivate += CloseImagePreview;
+                    this.VisibleChanged += CloseImagePreview;
+                    previewEventHandlersAttached = true;
+                }
 
                 imagePreviewForm.Show();
+                if (!this.ContainsFocus)
+                {
+                    listPanel?.Focus();
+                }
             }
             catch
             {
@@ -2125,6 +2126,22 @@ namespace MyClipboard
                 imagePreviewForm.Close();
                 imagePreviewForm.Dispose();
                 imagePreviewForm = null;
+            }
+        }
+
+        private sealed class NonActivatingPreviewForm : Form
+        {
+            protected override bool ShowWithoutActivation => true;
+
+            protected override CreateParams CreateParams
+            {
+                get
+                {
+                    CreateParams cp = base.CreateParams;
+                    cp.ExStyle |= 0x08000000; // WS_EX_NOACTIVATE，避免抢夺焦点
+                    cp.ExStyle |= 0x00000080; // WS_EX_TOOLWINDOW，隐藏任务栏图标
+                    return cp;
+                }
             }
         }
 
