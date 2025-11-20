@@ -771,6 +771,9 @@ namespace MyClipboard
 
         private void ListPanel_MouseDown(object sender, MouseEventArgs e)
         {
+            // 鼠标按下时关闭预览
+            CloseImagePreview(this, EventArgs.Empty);
+            
             if (e.Button == MouseButtons.Left)
             {
                 // 不立即设置 isDragging，等待 MouseMove 时再判断
@@ -786,21 +789,23 @@ namespace MyClipboard
                 listPanel.Focus();
             }
             
-            // 点击时关闭预览图（除非点击预览按钮）
-            bool clickedPreviewButton = false;
-            
             if (e.Button == MouseButtons.Left)
             {
                 // 设置选中项
                 int itemIndex = GetItemIndexAtPoint(e.Location);
                 if (itemIndex >= 0)
                 {
-                    // 检查是否点击了预览按钮区域
+                    int oldSelectedIndex = selectedIndex;
+                    selectedIndex = itemIndex;
+                    listPanel.Invalidate();
+                    listPanel.Focus();
+                    
+                    // 检查是否点击了预览按钮区域（只有当选中项是图片时）
                     List<ClipboardItem> displayList = GetFilteredDisplayList();
-                    if (itemIndex < displayList.Count && itemIndex == selectedIndex)
+                    if (itemIndex < displayList.Count)
                     {
                         ClipboardItem item = displayList[itemIndex];
-                        if (item.Format == "Image" && item.Data != null)
+                        if (item.Format == "Image" && item.Data != null && oldSelectedIndex == itemIndex)
                         {
                             // 计算按钮区域
                             int itemY = itemIndex * ITEM_HEIGHT - scrollOffset;
@@ -820,23 +825,12 @@ namespace MyClipboard
                                 // 如果点击在按钮区域内，显示预览
                                 if (buttonRect.Contains(e.Location))
                                 {
-                                    clickedPreviewButton = true;
                                     ShowImagePreview();
                                     return;
                                 }
                             }
                         }
                     }
-                    
-                    selectedIndex = itemIndex;
-                    listPanel.Invalidate();
-                    listPanel.Focus();
-                }
-                
-                // 如果没有点击预览按钮，关闭预览
-                if (!clickedPreviewButton)
-                {
-                    CloseImagePreview(this, EventArgs.Empty);
                 }
             }
             else if (e.Button == MouseButtons.Right)
