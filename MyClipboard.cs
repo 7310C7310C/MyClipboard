@@ -339,7 +339,6 @@ namespace MyClipboard
 
             // 右鍵選單
             listContextMenu = new ContextMenuStrip();
-            listContextMenu.Renderer = new DarkMenuRenderer();
             listContextMenu.Items.Add("收藏", null, ToggleFavorite_Click);
             listContextMenu.Items.Add(new ToolStripSeparator());
             listContextMenu.Items.Add("編輯", null, EditItem_Click);
@@ -386,7 +385,6 @@ namespace MyClipboard
             
             // 托盤右鍵選單
             ContextMenuStrip trayMenu = new ContextMenuStrip();
-            trayMenu.Renderer = new DarkMenuRenderer();
             trayMenu.Items.Add("顯示 / 隱藏（Ctrl + Alt + X）", null, (s, ev) => {
                 ToggleWindow();
             });
@@ -424,6 +422,7 @@ namespace MyClipboard
             trayMenu.Items.Add("退出", null, (s, ev) => {
                 Application.Exit();
             });
+            
             trayIcon.ContextMenuStrip = trayMenu;
             
             // 左键点击托盘图标也显示菜单
@@ -1529,16 +1528,11 @@ namespace MyClipboard
                         Form editForm = new Form();
                         editForm.Text = "編輯內容";
                         editForm.Size = new Size(500, 400);
-                        editForm.StartPosition = FormStartPosition.Manual;
+                        editForm.StartPosition = FormStartPosition.CenterParent;
                         editForm.FormBorderStyle = FormBorderStyle.Sizable;
                         editForm.MinimizeBox = false;
                         editForm.MaximizeBox = true;
                         editForm.TopMost = true;
-                        
-                        // 在主界面中央显示
-                        editForm.Location = new Point(
-                            this.Location.X + (this.Width - editForm.Width) / 2,
-                            this.Location.Y + (this.Height - editForm.Height) / 2);
                         
                         // 使用主程序的图标
                         if (this.Icon != null)
@@ -1546,10 +1540,10 @@ namespace MyClipboard
                             editForm.Icon = this.Icon;
                         }
                         
-                        // 深色主题
+                        // 应用深色主题
                         if (isDarkTheme)
                         {
-                            editForm.BackColor = Color.FromArgb(30, 30, 30);
+                            editForm.BackColor = Color.FromArgb(45, 45, 48);
                             editForm.ForeColor = Color.White;
                         }
                         
@@ -1564,7 +1558,7 @@ namespace MyClipboard
                         editBox.SelectionLength = 0;
                         if (isDarkTheme)
                         {
-                            editBox.BackColor = Color.FromArgb(45, 45, 48);
+                            editBox.BackColor = Color.FromArgb(30, 30, 30);
                             editBox.ForeColor = Color.White;
                         }
                         editForm.Controls.Add(editBox);
@@ -1573,9 +1567,7 @@ namespace MyClipboard
                         buttonPanel.Height = 50;
                         buttonPanel.Dock = DockStyle.Bottom;
                         if (isDarkTheme)
-                        {
-                            buttonPanel.BackColor = Color.FromArgb(30, 30, 30);
-                        }
+                            buttonPanel.BackColor = Color.FromArgb(45, 45, 48);
                         editForm.Controls.Add(buttonPanel);
                         
                         Button saveButton = new Button();
@@ -1584,10 +1576,10 @@ namespace MyClipboard
                         saveButton.Location = new Point(160, 10);
                         if (isDarkTheme)
                         {
-                            saveButton.BackColor = Color.FromArgb(0, 122, 204);
+                            saveButton.BackColor = Color.FromArgb(60, 60, 60);
                             saveButton.ForeColor = Color.White;
                             saveButton.FlatStyle = FlatStyle.Flat;
-                            saveButton.FlatAppearance.BorderSize = 0;
+                            saveButton.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 80);
                         }
                         saveButton.Click += (s, ev) => {
                             item.Text = editBox.Text;
@@ -1607,7 +1599,7 @@ namespace MyClipboard
                             cancelButton.BackColor = Color.FromArgb(60, 60, 60);
                             cancelButton.ForeColor = Color.White;
                             cancelButton.FlatStyle = FlatStyle.Flat;
-                            cancelButton.FlatAppearance.BorderSize = 0;
+                            cancelButton.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 80);
                         }
                         cancelButton.Click += (s, ev) => {
                             editForm.Close();
@@ -1703,19 +1695,13 @@ namespace MyClipboard
 
         private void ClearAll_Click(object sender, EventArgs e)
         {
-            if (clipboardHistory.Count == 0)
-                return;
+            // 只清空未收藏的记录
+            var unfavoritedItems = clipboardHistory.Where(item => !item.IsFavorite).ToList();
             
-            // 统计未收藏的记录数
-            int unfavoritedCount = clipboardHistory.Count(item => !item.IsFavorite);
-            if (unfavoritedCount == 0)
-            {
-                MessageBox.Show(this, "沒有未收藏的記錄可清空。", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (unfavoritedItems.Count == 0)
                 return;
-            }
                 
             DialogResult result = MessageBox.Show(
-                this,
                 "確定要清空所有未收藏的記錄嗎？",
                 "確認清空",
                 MessageBoxButtons.YesNo,
@@ -1723,9 +1709,11 @@ namespace MyClipboard
                 
             if (result == DialogResult.Yes)
             {
-                clipboardHistory.RemoveAll(item => !item.IsFavorite);
+                foreach (var item in unfavoritedItems)
+                {
+                    clipboardHistory.Remove(item);
+                }
                 scrollOffset = 0;
-                selectedIndex = -1;
                 RefreshListView();
                 SaveHistory();
             }
@@ -1817,20 +1805,19 @@ namespace MyClipboard
             tipForm.Text = "使用提示";
             tipForm.Size = new Size(400, 250);
             tipForm.StartPosition = FormStartPosition.Manual;
+            tipForm.Location = new Point(
+                this.Location.X + (this.Width - 400) / 2,
+                this.Location.Y + (this.Height - 250) / 2
+            );
             tipForm.FormBorderStyle = FormBorderStyle.FixedDialog;
             tipForm.MaximizeBox = false;
             tipForm.MinimizeBox = false;
             tipForm.TopMost = true;
             
-            // 在主界面中央显示
-            tipForm.Location = new Point(
-                this.Location.X + (this.Width - tipForm.Width) / 2,
-                this.Location.Y + (this.Height - tipForm.Height) / 2);
-            
-            // 深色主题
+            // 应用深色主题
             if (isDarkTheme)
             {
-                tipForm.BackColor = Color.FromArgb(30, 30, 30);
+                tipForm.BackColor = Color.FromArgb(45, 45, 48);
                 tipForm.ForeColor = Color.White;
             }
 
@@ -1843,9 +1830,7 @@ namespace MyClipboard
             messageLabel.Location = new Point(20, 20);
             messageLabel.Font = new Font("Consolas", 10F);
             if (isDarkTheme)
-            {
                 messageLabel.ForeColor = Color.White;
-            }
             tipForm.Controls.Add(messageLabel);
 
             CheckBox dontShowCheckbox = new CheckBox();
@@ -1853,9 +1838,7 @@ namespace MyClipboard
             dontShowCheckbox.Location = new Point(20, 150);
             dontShowCheckbox.AutoSize = true;
             if (isDarkTheme)
-            {
                 dontShowCheckbox.ForeColor = Color.White;
-            }
             tipForm.Controls.Add(dontShowCheckbox);
 
             Button okButton = new Button();
@@ -1864,10 +1847,10 @@ namespace MyClipboard
             okButton.Location = new Point(160, 180);
             if (isDarkTheme)
             {
-                okButton.BackColor = Color.FromArgb(0, 122, 204);
+                okButton.BackColor = Color.FromArgb(60, 60, 60);
                 okButton.ForeColor = Color.White;
                 okButton.FlatStyle = FlatStyle.Flat;
-                okButton.FlatAppearance.BorderSize = 0;
+                okButton.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 80);
             }
             okButton.Click += (s, ev) => {
                 if (dontShowCheckbox.Checked)
@@ -1879,7 +1862,7 @@ namespace MyClipboard
             };
             tipForm.Controls.Add(okButton);
 
-            tipForm.ShowDialog();
+            tipForm.ShowDialog(this);
         }
 
         private void About_Click(object sender, EventArgs e)
@@ -1888,7 +1871,56 @@ namespace MyClipboard
             bool wasTopMost = this.TopMost;
             this.TopMost = false;
             
-            MessageBox.Show(this, "聯繫微信：676400126", "關於", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            // 创建自定义About对话框
+            Form aboutForm = new Form();
+            aboutForm.Text = "關於";
+            aboutForm.Size = new Size(300, 150);
+            aboutForm.StartPosition = FormStartPosition.Manual;
+            aboutForm.Location = new Point(
+                this.Location.X + (this.Width - 300) / 2,
+                this.Location.Y + (this.Height - 150) / 2
+            );
+            aboutForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+            aboutForm.MaximizeBox = false;
+            aboutForm.MinimizeBox = false;
+            aboutForm.TopMost = true;
+            
+            if (this.Icon != null)
+                aboutForm.Icon = this.Icon;
+            
+            // 应用深色主题
+            if (isDarkTheme)
+            {
+                aboutForm.BackColor = Color.FromArgb(45, 45, 48);
+                aboutForm.ForeColor = Color.White;
+            }
+            
+            Label msgLabel = new Label();
+            msgLabel.Text = "聯繫微信：676400126";
+            msgLabel.AutoSize = false;
+            msgLabel.Size = new Size(260, 40);
+            msgLabel.Location = new Point(20, 30);
+            msgLabel.TextAlign = ContentAlignment.MiddleCenter;
+            msgLabel.Font = new Font("Consolas", 10F);
+            if (isDarkTheme)
+                msgLabel.ForeColor = Color.White;
+            aboutForm.Controls.Add(msgLabel);
+            
+            Button okBtn = new Button();
+            okBtn.Text = "確定";
+            okBtn.Size = new Size(80, 30);
+            okBtn.Location = new Point(110, 80);
+            if (isDarkTheme)
+            {
+                okBtn.BackColor = Color.FromArgb(60, 60, 60);
+                okBtn.ForeColor = Color.White;
+                okBtn.FlatStyle = FlatStyle.Flat;
+                okBtn.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 80);
+            }
+            okBtn.Click += (s, ev) => aboutForm.Close();
+            aboutForm.Controls.Add(okBtn);
+            
+            aboutForm.ShowDialog(this);
             
             // 恢复置顶状态
             this.TopMost = wasTopMost;
@@ -1905,15 +1937,14 @@ namespace MyClipboard
             helpForm.Text = "使用提示";
             helpForm.Size = new Size(400, 220);
             helpForm.StartPosition = FormStartPosition.Manual;
+            helpForm.Location = new Point(
+                this.Location.X + (this.Width - 400) / 2,
+                this.Location.Y + (this.Height - 220) / 2
+            );
             helpForm.FormBorderStyle = FormBorderStyle.FixedDialog;
             helpForm.MaximizeBox = false;
             helpForm.MinimizeBox = false;
             helpForm.TopMost = true;
-            
-            // 在主界面中央显示
-            helpForm.Location = new Point(
-                this.Location.X + (this.Width - helpForm.Width) / 2,
-                this.Location.Y + (this.Height - helpForm.Height) / 2);
             
             // 使用主程序的图标
             if (this.Icon != null)
@@ -1921,10 +1952,10 @@ namespace MyClipboard
                 helpForm.Icon = this.Icon;
             }
             
-            // 深色主题
+            // 应用深色主题
             if (isDarkTheme)
             {
-                helpForm.BackColor = Color.FromArgb(30, 30, 30);
+                helpForm.BackColor = Color.FromArgb(45, 45, 48);
                 helpForm.ForeColor = Color.White;
             }
 
@@ -1937,9 +1968,7 @@ namespace MyClipboard
             messageLabel.Location = new Point(20, 20);
             messageLabel.Font = new Font("Consolas", 10F);
             if (isDarkTheme)
-            {
                 messageLabel.ForeColor = Color.White;
-            }
             helpForm.Controls.Add(messageLabel);
 
             Button okButton = new Button();
@@ -1948,10 +1977,10 @@ namespace MyClipboard
             okButton.Location = new Point(160, 150);
             if (isDarkTheme)
             {
-                okButton.BackColor = Color.FromArgb(0, 122, 204);
+                okButton.BackColor = Color.FromArgb(60, 60, 60);
                 okButton.ForeColor = Color.White;
                 okButton.FlatStyle = FlatStyle.Flat;
-                okButton.FlatAppearance.BorderSize = 0;
+                okButton.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 80);
             }
             okButton.Click += (s, ev) => {
                 helpForm.Close();
@@ -2012,6 +2041,30 @@ namespace MyClipboard
                     searchClearButton.BackColor = Color.FromArgb(0, 90, 158);
                     searchClearButton.ForeColor = Color.White;
                 }
+                
+                // 应用菜单深色主题
+                if (listContextMenu != null)
+                {
+                    listContextMenu.Renderer = new ToolStripProfessionalRenderer(new DarkColorTable());
+                    listContextMenu.BackColor = Color.FromArgb(45, 45, 48);
+                    listContextMenu.ForeColor = Color.White;
+                    foreach (ToolStripItem item in listContextMenu.Items)
+                    {
+                        item.BackColor = Color.FromArgb(45, 45, 48);
+                        item.ForeColor = Color.White;
+                    }
+                }
+                if (trayIcon != null && trayIcon.ContextMenuStrip != null)
+                {
+                    trayIcon.ContextMenuStrip.Renderer = new ToolStripProfessionalRenderer(new DarkColorTable());
+                    trayIcon.ContextMenuStrip.BackColor = Color.FromArgb(45, 45, 48);
+                    trayIcon.ContextMenuStrip.ForeColor = Color.White;
+                    foreach (ToolStripItem item in trayIcon.ContextMenuStrip.Items)
+                    {
+                        item.BackColor = Color.FromArgb(45, 45, 48);
+                        item.ForeColor = Color.White;
+                    }
+                }
             }
             else
             {
@@ -2059,17 +2112,30 @@ namespace MyClipboard
                     searchClearButton.BackColor = Color.FromArgb(180, 210, 255);
                     searchClearButton.ForeColor = Color.FromArgb(60, 60, 60);
                 }
-            }
-            
-            // 更新菜单渲染器
-            if (listContextMenu != null)
-            {
-                listContextMenu.Renderer = isDarkTheme ? new DarkMenuRenderer() : new ToolStripProfessionalRenderer();
-            }
-            
-            if (trayIcon != null && trayIcon.ContextMenuStrip != null)
-            {
-                trayIcon.ContextMenuStrip.Renderer = isDarkTheme ? new DarkMenuRenderer() : new ToolStripProfessionalRenderer();
+                
+                // 应用菜单浅色主题
+                if (listContextMenu != null)
+                {
+                    listContextMenu.Renderer = new ToolStripProfessionalRenderer();
+                    listContextMenu.BackColor = SystemColors.Control;
+                    listContextMenu.ForeColor = SystemColors.ControlText;
+                    foreach (ToolStripItem item in listContextMenu.Items)
+                    {
+                        item.BackColor = SystemColors.Control;
+                        item.ForeColor = SystemColors.ControlText;
+                    }
+                }
+                if (trayIcon != null && trayIcon.ContextMenuStrip != null)
+                {
+                    trayIcon.ContextMenuStrip.Renderer = new ToolStripProfessionalRenderer();
+                    trayIcon.ContextMenuStrip.BackColor = SystemColors.Control;
+                    trayIcon.ContextMenuStrip.ForeColor = SystemColors.ControlText;
+                    foreach (ToolStripItem item in trayIcon.ContextMenuStrip.Items)
+                    {
+                        item.BackColor = SystemColors.Control;
+                        item.ForeColor = SystemColors.ControlText;
+                    }
+                }
             }
             
             if (listPanel != null)
@@ -2205,6 +2271,65 @@ namespace MyClipboard
         }
     }
 
+    // 深色主题颜色表，用于ContextMenuStrip
+    public class DarkColorTable : ProfessionalColorTable
+    {
+        public override Color MenuItemSelected
+        {
+            get { return Color.FromArgb(62, 62, 64); }
+        }
+
+        public override Color MenuItemSelectedGradientBegin
+        {
+            get { return Color.FromArgb(62, 62, 64); }
+        }
+
+        public override Color MenuItemSelectedGradientEnd
+        {
+            get { return Color.FromArgb(62, 62, 64); }
+        }
+
+        public override Color MenuItemPressedGradientBegin
+        {
+            get { return Color.FromArgb(45, 45, 48); }
+        }
+
+        public override Color MenuItemPressedGradientEnd
+        {
+            get { return Color.FromArgb(45, 45, 48); }
+        }
+
+        public override Color MenuItemBorder
+        {
+            get { return Color.FromArgb(62, 62, 64); }
+        }
+
+        public override Color MenuBorder
+        {
+            get { return Color.FromArgb(51, 51, 55); }
+        }
+
+        public override Color ImageMarginGradientBegin
+        {
+            get { return Color.FromArgb(45, 45, 48); }
+        }
+
+        public override Color ImageMarginGradientMiddle
+        {
+            get { return Color.FromArgb(45, 45, 48); }
+        }
+
+        public override Color ImageMarginGradientEnd
+        {
+            get { return Color.FromArgb(45, 45, 48); }
+        }
+
+        public override Color ToolStripDropDownBackground
+        {
+            get { return Color.FromArgb(45, 45, 48); }
+        }
+    }
+
     static class Program
     {
         [STAThread]
@@ -2214,55 +2339,5 @@ namespace MyClipboard
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new MainForm());
         }
-    }
-    
-    // 深色主题菜单渲染器
-    public class DarkMenuRenderer : ToolStripProfessionalRenderer
-    {
-        public DarkMenuRenderer() : base(new DarkColorTable()) { }
-        
-        protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
-        {
-            e.ArrowColor = Color.White;
-            base.OnRenderArrow(e);
-        }
-        
-        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
-        {
-            e.TextColor = Color.White;
-            base.OnRenderItemText(e);
-        }
-        
-        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
-        {
-            if (e.Item.Selected)
-            {
-                e.Graphics.FillRectangle(new SolidBrush(Color.FromArgb(62, 62, 64)), e.Item.ContentRectangle);
-            }
-            else
-            {
-                e.Graphics.FillRectangle(new SolidBrush(Color.FromArgb(45, 45, 48)), e.Item.ContentRectangle);
-            }
-        }
-    }
-    
-    public class DarkColorTable : ProfessionalColorTable
-    {
-        public override Color MenuItemSelected => Color.FromArgb(62, 62, 64);
-        public override Color MenuItemSelectedGradientBegin => Color.FromArgb(62, 62, 64);
-        public override Color MenuItemSelectedGradientEnd => Color.FromArgb(62, 62, 64);
-        public override Color MenuBorder => Color.FromArgb(60, 60, 60);
-        public override Color MenuItemBorder => Color.FromArgb(60, 60, 60);
-        public override Color ImageMarginGradientBegin => Color.FromArgb(45, 45, 48);
-        public override Color ImageMarginGradientMiddle => Color.FromArgb(45, 45, 48);
-        public override Color ImageMarginGradientEnd => Color.FromArgb(45, 45, 48);
-        public override Color ToolStripDropDownBackground => Color.FromArgb(45, 45, 48);
-        public override Color MenuItemPressedGradientBegin => Color.FromArgb(62, 62, 64);
-        public override Color MenuItemPressedGradientEnd => Color.FromArgb(62, 62, 64);
-        public override Color CheckBackground => Color.FromArgb(62, 62, 64);
-        public override Color CheckSelectedBackground => Color.FromArgb(62, 62, 64);
-        public override Color CheckPressedBackground => Color.FromArgb(62, 62, 64);
-        public override Color SeparatorDark => Color.FromArgb(60, 60, 60);
-        public override Color SeparatorLight => Color.FromArgb(60, 60, 60);
     }
 }
