@@ -2042,28 +2042,11 @@ namespace MyClipboard
                     searchClearButton.ForeColor = Color.White;
                 }
                 
-                // 应用菜单深色主题
-                if (listContextMenu != null)
-                {
-                    listContextMenu.Renderer = new ToolStripProfessionalRenderer(new DarkColorTable());
-                    listContextMenu.BackColor = Color.FromArgb(45, 45, 48);
-                    listContextMenu.ForeColor = Color.White;
-                    foreach (ToolStripItem item in listContextMenu.Items)
-                    {
-                        item.BackColor = Color.FromArgb(45, 45, 48);
-                        item.ForeColor = Color.White;
-                    }
-                }
+                // 应用菜单深色主题（包含二级菜单）
+                ApplyMenuTheme(listContextMenu, true);
                 if (trayIcon != null && trayIcon.ContextMenuStrip != null)
                 {
-                    trayIcon.ContextMenuStrip.Renderer = new ToolStripProfessionalRenderer(new DarkColorTable());
-                    trayIcon.ContextMenuStrip.BackColor = Color.FromArgb(45, 45, 48);
-                    trayIcon.ContextMenuStrip.ForeColor = Color.White;
-                    foreach (ToolStripItem item in trayIcon.ContextMenuStrip.Items)
-                    {
-                        item.BackColor = Color.FromArgb(45, 45, 48);
-                        item.ForeColor = Color.White;
-                    }
+                    ApplyMenuTheme(trayIcon.ContextMenuStrip, true);
                 }
             }
             else
@@ -2112,35 +2095,53 @@ namespace MyClipboard
                     searchClearButton.BackColor = Color.FromArgb(180, 210, 255);
                     searchClearButton.ForeColor = Color.FromArgb(60, 60, 60);
                 }
-                
-                // 应用菜单浅色主题
-                if (listContextMenu != null)
-                {
-                    listContextMenu.Renderer = new ToolStripProfessionalRenderer();
-                    listContextMenu.BackColor = SystemColors.Control;
-                    listContextMenu.ForeColor = SystemColors.ControlText;
-                    foreach (ToolStripItem item in listContextMenu.Items)
-                    {
-                        item.BackColor = SystemColors.Control;
-                        item.ForeColor = SystemColors.ControlText;
-                    }
-                }
+                // 应用菜单浅色主题（包含二级菜单）
+                ApplyMenuTheme(listContextMenu, false);
                 if (trayIcon != null && trayIcon.ContextMenuStrip != null)
                 {
-                    trayIcon.ContextMenuStrip.Renderer = new ToolStripProfessionalRenderer();
-                    trayIcon.ContextMenuStrip.BackColor = SystemColors.Control;
-                    trayIcon.ContextMenuStrip.ForeColor = SystemColors.ControlText;
-                    foreach (ToolStripItem item in trayIcon.ContextMenuStrip.Items)
-                    {
-                        item.BackColor = SystemColors.Control;
-                        item.ForeColor = SystemColors.ControlText;
-                    }
+                    ApplyMenuTheme(trayIcon.ContextMenuStrip, false);
                 }
             }
             
             if (listPanel != null)
             {
                 listPanel.Invalidate();
+            }
+        }
+
+        // 递归应用 ToolStripItem/ToolStripMenuItem 的主题色（支持二级菜单）
+        private void ApplyMenuItemTheme(ToolStripItem item, bool dark)
+        {
+            if (item == null)
+                return;
+
+            if (item is ToolStripSeparator)
+                return;
+
+            item.BackColor = dark ? Color.FromArgb(45, 45, 48) : SystemColors.Control;
+            item.ForeColor = dark ? Color.White : SystemColors.ControlText;
+
+            if (item is ToolStripMenuItem menuItem && menuItem.HasDropDownItems)
+            {
+                foreach (ToolStripItem sub in menuItem.DropDownItems)
+                {
+                    ApplyMenuItemTheme(sub, dark);
+                }
+            }
+        }
+
+        private void ApplyMenuTheme(ContextMenuStrip cms, bool dark)
+        {
+            if (cms == null)
+                return;
+
+            cms.Renderer = dark ? new ToolStripProfessionalRenderer(new DarkColorTable()) : new ToolStripProfessionalRenderer();
+            cms.BackColor = dark ? Color.FromArgb(45, 45, 48) : SystemColors.Control;
+            cms.ForeColor = dark ? Color.White : SystemColors.ControlText;
+
+            foreach (ToolStripItem item in cms.Items)
+            {
+                ApplyMenuItemTheme(item, dark);
             }
         }
 
