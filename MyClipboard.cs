@@ -998,8 +998,10 @@ namespace MyClipboard
                 var themeMenu = found[0] as ToolStripMenuItem;
                 if (themeMenu != null && themeMenu.DropDownItems.Count >= 2)
                 {
-                    themeMenu.DropDownItems[0].Checked = !isDarkTheme; // 淺色
-                    themeMenu.DropDownItems[1].Checked = isDarkTheme;  // 深色
+                    var lightItem = themeMenu.DropDownItems[0] as ToolStripMenuItem;
+                    var darkItem = themeMenu.DropDownItems[1] as ToolStripMenuItem;
+                    if (lightItem != null) lightItem.Checked = !isDarkTheme;
+                    if (darkItem != null) darkItem.Checked = isDarkTheme;
                 }
             }
             
