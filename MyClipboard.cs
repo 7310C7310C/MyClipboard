@@ -996,12 +996,8 @@ namespace MyClipboard
             if (clearItem != null)
             {
                 clearItem.Visible = !showingFavorites;
-                // 隐藏与之相邻的分隔线（如果存在）
+                // 仅隐藏清空项下面的分隔线（如果存在），上方分隔线保留
                 int idx = listContextMenu.Items.IndexOf(clearItem);
-                if (idx > 0 && listContextMenu.Items[idx - 1] is ToolStripSeparator)
-                {
-                    listContextMenu.Items[idx - 1].Visible = !showingFavorites;
-                }
                 if (idx + 1 < listContextMenu.Items.Count && listContextMenu.Items[idx + 1] is ToolStripSeparator)
                 {
                     listContextMenu.Items[idx + 1].Visible = !showingFavorites;
@@ -2215,7 +2211,7 @@ namespace MyClipboard
             if (dark)
                 renderer = new DarkRenderer(new DarkColorTable());
             else
-                renderer = new ToolStripProfessionalRenderer();
+                renderer = new LightRenderer();
 
             cms.Renderer = renderer;
 
@@ -2443,6 +2439,31 @@ namespace MyClipboard
         {
             // 使用白色或浅灰色绘制箭头，以便在深色背景上可见
             Color arrowColor = Color.White;
+            Rectangle r = e.ArrowRectangle;
+            Point[] pts = new Point[] {
+                new Point(r.Left + 2, r.Top + 2),
+                new Point(r.Right - 2, r.Top + r.Height / 2),
+                new Point(r.Left + 2, r.Bottom - 2)
+            };
+            using (SolidBrush b = new SolidBrush(arrowColor))
+            {
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                e.Graphics.FillPolygon(b, pts);
+            }
+        }
+    }
+
+    // 浅色主题自定义 Renderer，绘制较小的深色箭头
+    public class LightRenderer : ToolStripProfessionalRenderer
+    {
+        public LightRenderer() : base()
+        {
+        }
+
+        protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
+        {
+            // 使用与深色渲染相同的三角形形状，但颜色为深灰色
+            Color arrowColor = Color.FromArgb(64, 64, 64);
             Rectangle r = e.ArrowRectangle;
             Point[] pts = new Point[] {
                 new Point(r.Left + 2, r.Top + 2),
