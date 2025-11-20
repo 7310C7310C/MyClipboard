@@ -771,13 +771,54 @@ namespace MyClipboard
 
         private void ListPanel_MouseDown(object sender, MouseEventArgs e)
         {
-            // 鼠标按下时关闭预览
-            CloseImagePreview(this, EventArgs.Empty);
-            
             if (e.Button == MouseButtons.Left)
             {
+                // 检查是否点击了预览按钮区域
+                int itemIndex = GetItemIndexAtPoint(e.Location);
+                if (itemIndex >= 0 && itemIndex == selectedIndex)
+                {
+                    List<ClipboardItem> displayList = GetFilteredDisplayList();
+                    if (itemIndex < displayList.Count)
+                    {
+                        ClipboardItem item = displayList[itemIndex];
+                        if (item.Format == "Image" && item.Data != null)
+                        {
+                            // 计算按钮区域
+                            int itemY = itemIndex * ITEM_HEIGHT - scrollOffset;
+                            int panelWidth = listPanel.ClientSize.Width;
+                            
+                            using (Graphics g = listPanel.CreateGraphics())
+                            {
+                                Font buttonFont = new Font("微软雅黑", 10F, FontStyle.Bold);
+                                SizeF textSize = g.MeasureString("預覽", buttonFont);
+                                int buttonWidth = (int)textSize.Width + 20;
+                                int buttonHeight = (int)textSize.Height + 10;
+                                int buttonX = (panelWidth - buttonWidth) / 2;
+                                int buttonY = itemY + (ITEM_HEIGHT - buttonHeight) / 2;
+                                
+                                Rectangle buttonRect = new Rectangle(buttonX, buttonY, buttonWidth, buttonHeight);
+                                
+                                // 如果点击在按钮区域内，不关闭预览并直接显示
+                                if (buttonRect.Contains(e.Location))
+                                {
+                                    ShowImagePreview();
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // 不是点击预览按钮，关闭预览
+                CloseImagePreview(this, EventArgs.Empty);
+                
                 // 不立即设置 isDragging，等待 MouseMove 时再判断
                 dragStartPoint = e.Location;
+            }
+            else
+            {
+                // 右键按下时关闭预览
+                CloseImagePreview(this, EventArgs.Empty);
             }
         }
 
@@ -795,42 +836,9 @@ namespace MyClipboard
                 int itemIndex = GetItemIndexAtPoint(e.Location);
                 if (itemIndex >= 0)
                 {
-                    int oldSelectedIndex = selectedIndex;
                     selectedIndex = itemIndex;
                     listPanel.Invalidate();
                     listPanel.Focus();
-                    
-                    // 检查是否点击了预览按钮区域（只有当选中项是图片时）
-                    List<ClipboardItem> displayList = GetFilteredDisplayList();
-                    if (itemIndex < displayList.Count)
-                    {
-                        ClipboardItem item = displayList[itemIndex];
-                        if (item.Format == "Image" && item.Data != null && oldSelectedIndex == itemIndex)
-                        {
-                            // 计算按钮区域
-                            int itemY = itemIndex * ITEM_HEIGHT - scrollOffset;
-                            int panelWidth = listPanel.ClientSize.Width;
-                            
-                            using (Graphics g = listPanel.CreateGraphics())
-                            {
-                                Font buttonFont = new Font("微软雅黑", 10F, FontStyle.Bold);
-                                SizeF textSize = g.MeasureString("預覽", buttonFont);
-                                int buttonWidth = (int)textSize.Width + 20;
-                                int buttonHeight = (int)textSize.Height + 10;
-                                int buttonX = (panelWidth - buttonWidth) / 2;
-                                int buttonY = itemY + (ITEM_HEIGHT - buttonHeight) / 2;
-                                
-                                Rectangle buttonRect = new Rectangle(buttonX, buttonY, buttonWidth, buttonHeight);
-                                
-                                // 如果点击在按钮区域内，显示预览
-                                if (buttonRect.Contains(e.Location))
-                                {
-                                    ShowImagePreview();
-                                    return;
-                                }
-                            }
-                        }
-                    }
                 }
             }
             else if (e.Button == MouseButtons.Right)
