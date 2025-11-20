@@ -2118,10 +2118,19 @@ namespace MyClipboard
             if (item is ToolStripSeparator)
                 return;
 
-            item.BackColor = dark ? Color.FromArgb(45, 45, 48) : SystemColors.Control;
-            item.ForeColor = dark ? Color.White : SystemColors.ControlText;
+            if (dark)
+            {
+                item.BackColor = Color.FromArgb(45, 45, 48);
+                item.ForeColor = Color.White;
+            }
+            else
+            {
+                item.BackColor = SystemColors.Control;
+                item.ForeColor = SystemColors.ControlText;
+            }
 
-            if (item is ToolStripMenuItem menuItem && menuItem.HasDropDownItems)
+            ToolStripMenuItem menuItem = item as ToolStripMenuItem;
+            if (menuItem != null && menuItem.HasDropDownItems)
             {
                 foreach (ToolStripItem sub in menuItem.DropDownItems)
                 {
@@ -2135,9 +2144,21 @@ namespace MyClipboard
             if (cms == null)
                 return;
 
-            cms.Renderer = dark ? new ToolStripProfessionalRenderer(new DarkColorTable()) : new ToolStripProfessionalRenderer();
-            cms.BackColor = dark ? Color.FromArgb(45, 45, 48) : SystemColors.Control;
-            cms.ForeColor = dark ? Color.White : SystemColors.ControlText;
+            if (dark)
+                cms.Renderer = new ToolStripProfessionalRenderer(new DarkColorTable());
+            else
+                cms.Renderer = new ToolStripProfessionalRenderer();
+
+            if (dark)
+            {
+                cms.BackColor = Color.FromArgb(45, 45, 48);
+                cms.ForeColor = Color.White;
+            }
+            else
+            {
+                cms.BackColor = SystemColors.Control;
+                cms.ForeColor = SystemColors.ControlText;
+            }
 
             foreach (ToolStripItem item in cms.Items)
             {
