@@ -2051,11 +2051,7 @@ namespace MyClipboard
             UnregisterHotKey(this.Handle, HOTKEY_ID);
             trayIcon.Visible = false;
             
-            if (imagePreviewForm != null && !imagePreviewForm.IsDisposed)
-            {
-                imagePreviewForm.Close();
-                imagePreviewForm.Dispose();
-            }
+            // 之前用于预览的窗口已移除
             
             if (clipboardMonitor != null)
             {
