@@ -733,32 +733,6 @@ namespace MyClipboard
                     {
                         e.Graphics.DrawRectangle(highlightPen, new Rectangle(1, itemY + 1, panelWidth - 2, ITEM_HEIGHT - 2));
                     }
-                    
-                    // 如果是图片，在中央显示"預覽"按钮
-                    if (item.Format == "Image" && item.Data != null)
-                    {
-                        string buttonText = "預覽";
-                        Font buttonFont = new Font("微软雅黑", 10F, FontStyle.Bold);
-                        SizeF textSize = e.Graphics.MeasureString(buttonText, buttonFont);
-                        int buttonWidth = (int)textSize.Width + 20;
-                        int buttonHeight = (int)textSize.Height + 10;
-                        int buttonX = (panelWidth - buttonWidth) / 2;
-                        int buttonY = itemY + (ITEM_HEIGHT - buttonHeight) / 2;
-                        
-                        Rectangle buttonRect = new Rectangle(buttonX, buttonY, buttonWidth, buttonHeight);
-                        
-                        // 绘制按钮背景和边框
-                        using (SolidBrush buttonBrush = new SolidBrush(Color.FromArgb(0, 120, 215)))
-                        using (Pen buttonPen = new Pen(Color.FromArgb(0, 90, 180), 2))
-                        {
-                            e.Graphics.FillRectangle(buttonBrush, buttonRect);
-                            e.Graphics.DrawRectangle(buttonPen, buttonRect);
-                        }
-                        
-                        // 绘制按钮文字
-                        TextRenderer.DrawText(e.Graphics, buttonText, buttonFont, buttonRect,
-                            Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-                    }
                 }
                 
                 TextRenderer.DrawText(e.Graphics, displayText, listPanel.Font, textRect, 
@@ -2015,6 +1989,15 @@ namespace MyClipboard
             }
         }
 
+        // 自定义预览窗口类，重写 ShowWithoutActivation 属性以防止夺取焦点
+        private class PreviewForm : Form
+        {
+            protected override bool ShowWithoutActivation
+            {
+                get { return true; }
+            }
+        }
+
         private void ShowImagePreview()
         {
             // 关闭已有的预览窗口
@@ -2044,7 +2027,7 @@ namespace MyClipboard
                 }
 
                 // 创建预览窗口
-                imagePreviewForm = new Form();
+                imagePreviewForm = new PreviewForm();
                 imagePreviewForm.FormBorderStyle = FormBorderStyle.None;
                 imagePreviewForm.BackColor = Color.Black;
                 imagePreviewForm.StartPosition = FormStartPosition.Manual;
