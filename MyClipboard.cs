@@ -2323,12 +2323,12 @@ namespace MyClipboard
 
         public override Color MenuItemBorder
         {
-            get { return Color.FromArgb(62, 62, 64); }
+            get { return Color.FromArgb(200, 200, 200); }
         }
 
         public override Color MenuBorder
         {
-            get { return Color.FromArgb(51, 51, 55); }
+            get { return Color.FromArgb(200, 200, 200); }
         }
 
         public override Color ImageMarginGradientBegin
