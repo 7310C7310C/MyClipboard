@@ -195,19 +195,10 @@ namespace MyClipboard
             listPanel.KeyDown += MainForm_KeyDown;
             contentPanel.Controls.Add(listPanel);
             
-            // 调整listPanel大小以避开搜索框，并保持搜索框中文本垂直居中
+            // 调整listPanel大小以避开搜索框
             Action updateListPanelSize = () => {
                 listPanel.Location = new Point(0, 0);
                 listPanel.Size = new Size(contentPanel.ClientSize.Width, contentPanel.ClientSize.Height - SEARCH_BOX_HEIGHT);
-
-                // 根据当前字体计算搜索框垂直内边距，使文字在上下边中间
-                if (searchBox != null)
-                {
-                    int fontHeight = TextRenderer.MeasureText("A", searchBox.Font).Height;
-                    int vpad = Math.Max(0, (SEARCH_BOX_HEIGHT - fontHeight) / 2);
-                    searchBox.Padding = new Padding(10, vpad, 0, 0);
-                }
-
                 // 确保滚动条不超过listPanel的高度
                 if (scrollBarPanel != null && scrollBarPanel.Height + scrollBarPanel.Top > listPanel.Height)
                 {
@@ -354,6 +345,8 @@ namespace MyClipboard
             listContextMenu.Items.Add("複製", null, CopyItem_Click);
             listContextMenu.Items.Add("刪除", null, DeleteItem_Click);
             listContextMenu.Items.Add(new ToolStripSeparator());
+            listContextMenu.Items.Add("清空", null, ClearAll_Click);
+            listContextMenu.Items.Add(new ToolStripSeparator());
 
             // 在右键菜单中加入“切換主題”及二级菜单（放在“幫助”之前）
             ToolStripMenuItem ctxThemeMenu = new ToolStripMenuItem("切換主題");
@@ -380,7 +373,8 @@ namespace MyClipboard
             listContextMenu.Items.Add(ctxThemeMenu);
 
             listContextMenu.Items.Add("幫助", null, Help_Click);
-            listContextMenu.Items.Add("清空", null, ClearAll_Click);
+            // 与托盘 About 相同的“關於”项
+            listContextMenu.Items.Add("關於", null, About_Click);
             listContextMenu.Opening += ListContextMenu_Opening;
 
             // 托盤圖示
@@ -419,6 +413,8 @@ namespace MyClipboard
             };
             
             trayMenu.Items.Add(themeMenuItem);
+            // 在托盘菜单中加入“幫助”，作用与界面右键的 Help_Click 相同
+            trayMenu.Items.Add("幫助", null, Help_Click);
             // 添加“關於”菜单项（与切換主題同组）
             trayMenu.Items.Add("關於", null, About_Click);
             
@@ -994,10 +990,11 @@ namespace MyClipboard
             Point mousePos = listPanel.PointToClient(Control.MousePosition);
             int itemIndex = GetItemIndexAtPoint(mousePos);
             
-            // 在收藏界面隐藏"清空"选项（索引调整为8，因为加入了切換主題子菜单）
-            if (listContextMenu.Items.Count > 8)
+            // 在收藏界面隐藏"清空"选项（根据文本查找以避免索引变动）
+            var clearItem = listContextMenu.Items.Cast<ToolStripItem>().FirstOrDefault(it => it.Text == "清空");
+            if (clearItem != null)
             {
-                listContextMenu.Items[8].Visible = !showingFavorites;
+                clearItem.Visible = !showingFavorites;
             }
 
             // 同步右键菜单中主题子菜单的选中状态
@@ -1022,8 +1019,12 @@ namespace MyClipboard
                 {
                     ClipboardItem item = displayList[itemIndex];
                     bool isFavorite = item.IsFavorite;
-                    // 更新收藏菜单项的文字（索引0）
-                    listContextMenu.Items[0].Text = isFavorite ? "取消收藏" : "收藏";
+                    // 更新收藏菜单项的文字（通过文本查找，避免索引依赖）
+                    var favItem = listContextMenu.Items.Cast<ToolStripItem>().FirstOrDefault(it => it.Text == "收藏" || it.Text == "取消收藏");
+                    if (favItem != null)
+                    {
+                        favItem.Text = isFavorite ? "取消收藏" : "收藏";
+                    }
                 }
             }
         }
@@ -1165,6 +1166,42 @@ namespace MyClipboard
             List<ClipboardItem> displayList = GetFilteredDisplayList();
             if (displayList.Count == 0)
                 return base.ProcessCmdKey(ref msg, keyData);
+
+            // 支持 Ctrl+C 复制当前选中记录
+            if ((keyData & Keys.Control) == Keys.Control && (keyData & Keys.KeyCode) == Keys.C)
+            {
+                if (selectedIndex >= 0 && selectedIndex < displayList.Count)
+                {
+                    var item = displayList[selectedIndex];
+                    try
+                    {
+                        if (item.Format == "Text")
+                        {
+                            Clipboard.SetText(item.Text ?? "");
+                        }
+                        else if (item.Format == "RTF")
+                        {
+                            string rtf = Encoding.UTF8.GetString(item.Data ?? new byte[0]);
+                            Clipboard.SetData(DataFormats.Rtf, rtf);
+                        }
+                        else if (item.Format == "HTML")
+                        {
+                            string html = Encoding.UTF8.GetString(item.Data ?? new byte[0]);
+                            Clipboard.SetData(DataFormats.Html, html);
+                        }
+                        else if (item.Format == "Image" && item.Data != null)
+                        {
+                            using (MemoryStream ms = new MemoryStream(item.Data))
+                            {
+                                Image img = Image.FromStream(ms);
+                                Clipboard.SetImage(img);
+                            }
+                        }
+                    }
+                    catch { }
+                }
+                return true;
+            }
 
             int oldIndex = selectedIndex;
             bool handled = false;
