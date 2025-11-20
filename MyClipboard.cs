@@ -102,7 +102,6 @@ namespace MyClipboard
         private Color favoriteBgColor1Dark, favoriteBgColor2Dark;
         private int selectedIndex = -1;
         private Form imagePreviewForm = null;
-        private Button previewButton = null;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -787,6 +786,9 @@ namespace MyClipboard
                 listPanel.Focus();
             }
             
+            // 点击时关闭预览图（除非点击预览按钮）
+            bool clickedPreviewButton = false;
+            
             if (e.Button == MouseButtons.Left)
             {
                 // 设置选中项
@@ -818,6 +820,7 @@ namespace MyClipboard
                                 // 如果点击在按钮区域内，显示预览
                                 if (buttonRect.Contains(e.Location))
                                 {
+                                    clickedPreviewButton = true;
                                     ShowImagePreview();
                                     return;
                                 }
@@ -828,6 +831,12 @@ namespace MyClipboard
                     selectedIndex = itemIndex;
                     listPanel.Invalidate();
                     listPanel.Focus();
+                }
+                
+                // 如果没有点击预览按钮，关闭预览
+                if (!clickedPreviewButton)
+                {
+                    CloseImagePreview(this, EventArgs.Empty);
                 }
             }
             else if (e.Button == MouseButtons.Right)
@@ -866,6 +875,9 @@ namespace MyClipboard
 
         private void ListPanel_MouseWheel(object sender, MouseEventArgs e)
         {
+            // 滚动时关闭预览
+            CloseImagePreview(this, EventArgs.Empty);
+            
             int delta = e.Delta / 120;
             scrollOffset -= delta * 60;
             
@@ -1159,6 +1171,8 @@ namespace MyClipboard
         {
             if (e.Button == MouseButtons.Left)
             {
+                // 拖动时关闭预览
+                CloseImagePreview(this, EventArgs.Empty);
                 isDragging = true;
                 dragStartPoint = e.Location;
             }
@@ -1345,6 +1359,8 @@ namespace MyClipboard
             {
                 EnsureSelectedVisible();
                 listPanel.Invalidate();
+                // 选中项改变时关闭预览
+                CloseImagePreview(this, EventArgs.Empty);
             }
 
             return handled || base.ProcessCmdKey(ref msg, keyData);
