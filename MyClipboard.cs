@@ -101,7 +101,6 @@ namespace MyClipboard
         private Color favoriteBgColor1Light, favoriteBgColor2Light;
         private Color favoriteBgColor1Dark, favoriteBgColor2Dark;
         private int selectedIndex = -1;
-        private Form imagePreviewForm = null;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -341,7 +340,6 @@ namespace MyClipboard
             // 右鍵選單
             listContextMenu = new ContextMenuStrip();
             listContextMenu.Items.Add("收藏", null, ToggleFavorite_Click);
-            listContextMenu.Items.Add("預覽", null, PreviewItem_Click);
             listContextMenu.Items.Add(new ToolStripSeparator());
             listContextMenu.Items.Add("編輯", null, EditItem_Click);
             listContextMenu.Items.Add("複製", null, CopyItem_Click);
@@ -624,7 +622,6 @@ namespace MyClipboard
             }
             scrollOffset = 0;
             selectedIndex = -1;
-            CloseImagePreview(this, EventArgs.Empty);
             listPanel.Invalidate();
         }
         
@@ -808,9 +805,6 @@ namespace MyClipboard
 
         private void ListPanel_MouseWheel(object sender, MouseEventArgs e)
         {
-            // 滚动时关闭预览
-            CloseImagePreview(this, EventArgs.Empty);
-            
             int delta = e.Delta / 120;
             scrollOffset -= delta * 60;
             
@@ -934,7 +928,6 @@ namespace MyClipboard
 
         private void MinimizeButton_Click(object sender, EventArgs e)
         {
-            CloseImagePreview(this, EventArgs.Empty);
             this.Hide();
         }
         
@@ -950,7 +943,6 @@ namespace MyClipboard
             
             scrollOffset = 0;
             selectedIndex = -1;
-            CloseImagePreview(this, EventArgs.Empty);
             listPanel.Invalidate();
         }
         
@@ -968,34 +960,6 @@ namespace MyClipboard
                     displayList[itemIndex].IsFavorite = !displayList[itemIndex].IsFavorite;
                     listPanel.Invalidate();
                     SaveHistory();
-                }
-            }
-        }
-        
-        private void PreviewItem_Click(object sender, EventArgs e)
-        {
-            Point mousePos = listPanel.PointToClient(Control.MousePosition);
-            int itemIndex = GetItemIndexAtPoint(mousePos);
-            
-            if (itemIndex >= 0)
-            {
-                List<ClipboardItem> displayList = GetFilteredDisplayList();
-                
-                if (itemIndex < displayList.Count)
-                {
-                    ClipboardItem item = displayList[itemIndex];
-                    
-                    if (item.Format == "Image" && item.Data != null)
-                    {
-                        // 图片预览
-                        selectedIndex = itemIndex;
-                        ShowImagePreview();
-                    }
-                    else if (!string.IsNullOrEmpty(item.Text))
-                    {
-                        // 文字预览
-                        ShowTextPreview(item.Text);
-                    }
                 }
             }
         }
@@ -1045,13 +1009,6 @@ namespace MyClipboard
                     if (lightItem != null) lightItem.Checked = !isDarkTheme;
                     if (darkItem != null) darkItem.Checked = isDarkTheme;
                 }
-            }
-            
-            // 预览菜单项始终显示，无论是否选中了项
-            var previewItem = listContextMenu.Items.Cast<ToolStripItem>().FirstOrDefault(it => it.Text == "預覽");
-            if (previewItem != null)
-            {
-                previewItem.Visible = (itemIndex >= 0);
             }
             
             if (itemIndex >= 0)
@@ -1139,8 +1096,6 @@ namespace MyClipboard
         {
             if (e.Button == MouseButtons.Left)
             {
-                // 拖动时关闭预览
-                CloseImagePreview(this, EventArgs.Empty);
                 isDragging = true;
                 dragStartPoint = e.Location;
             }
@@ -1156,8 +1111,6 @@ namespace MyClipboard
                 if (deltaX > 5 || deltaY > 5)
                 {
                     isDragging = true;
-                    // 开始拖动时关闭预览
-                    CloseImagePreview(this, EventArgs.Empty);
                 }
             }
             
@@ -1634,6 +1587,9 @@ namespace MyClipboard
                             string tempPath = Path.Combine(Path.GetTempPath(), "MyClipboard_" + DateTime.Now.Ticks + ".png");
                             File.WriteAllBytes(tempPath, item.Data);
                             
+                            // 隐藏主界面
+                            this.Hide();
+                            
                             // 使用 Paint 打开图片
                             System.Diagnostics.Process.Start("mspaint.exe", "\""+tempPath+"\"");
                         }
@@ -1997,163 +1953,6 @@ namespace MyClipboard
             {
                 listPanel.Invalidate();
             }
-        }
-
-        private void ShowImagePreview()
-        {
-            // 关闭已有的预览窗口
-            if (imagePreviewForm != null && !imagePreviewForm.IsDisposed)
-            {
-                imagePreviewForm.Close();
-                imagePreviewForm.Dispose();
-                imagePreviewForm = null;
-            }
-
-            // 检查选中项是否为图片
-            List<ClipboardItem> displayList = GetFilteredDisplayList();
-            if (selectedIndex < 0 || selectedIndex >= displayList.Count)
-                return;
-
-            ClipboardItem selectedItem = displayList[selectedIndex];
-            if (selectedItem.Format != "Image" || selectedItem.Data == null)
-                return;
-
-            try
-            {
-                // 加载图片
-                Image previewImage;
-                using (MemoryStream ms = new MemoryStream(selectedItem.Data))
-                {
-                    previewImage = Image.FromStream(ms);
-                }
-
-                // 创建预览窗口
-                imagePreviewForm = new Form();
-                imagePreviewForm.FormBorderStyle = FormBorderStyle.None;
-                imagePreviewForm.BackColor = Color.Black;
-                imagePreviewForm.StartPosition = FormStartPosition.Manual;
-                imagePreviewForm.TopMost = true;
-                imagePreviewForm.ShowInTaskbar = false;
-
-                // 计算预览窗口大小（最大400x400，保持宽高比）
-                int maxSize = 400;
-                double scale = Math.Min((double)maxSize / previewImage.Width, (double)maxSize / previewImage.Height);
-                if (scale > 1) scale = 1; // 不放大小图
-                int previewWidth = (int)(previewImage.Width * scale);
-                int previewHeight = (int)(previewImage.Height * scale);
-                imagePreviewForm.Size = new Size(previewWidth + 4, previewHeight + 4); // 加4px边框
-
-                // 计算预览窗口位置（尽量在主窗口右侧，不遮挡且不超出屏幕）
-                Screen currentScreen = Screen.FromControl(this);
-                Rectangle workingArea = currentScreen.WorkingArea;
-                
-                int previewX = this.Right + 10;
-                int previewY = this.Top;
-
-                // 如果右侧空间不足，放在左侧
-                if (previewX + imagePreviewForm.Width > workingArea.Right)
-                {
-                    previewX = this.Left - imagePreviewForm.Width - 10;
-                }
-                
-                // 如果左侧也不足，放在主窗口上方或下方
-                if (previewX < workingArea.Left)
-                {
-                    previewX = this.Left;
-                    previewY = this.Bottom + 10;
-                    
-                    // 如果下方也不足，放在上方
-                    if (previewY + imagePreviewForm.Height > workingArea.Bottom)
-                    {
-                        previewY = this.Top - imagePreviewForm.Height - 10;
-                    }
-                }
-
-                // 确保不超出屏幕边界
-                if (previewX < workingArea.Left) previewX = workingArea.Left;
-                if (previewY < workingArea.Top) previewY = workingArea.Top;
-                if (previewX + imagePreviewForm.Width > workingArea.Right) previewX = workingArea.Right - imagePreviewForm.Width;
-                if (previewY + imagePreviewForm.Height > workingArea.Bottom) previewY = workingArea.Bottom - imagePreviewForm.Height;
-
-                imagePreviewForm.Location = new Point(previewX, previewY);
-
-                // 添加图片显示（带2px边框）
-                PictureBox pictureBox = new PictureBox();
-                pictureBox.Image = previewImage;
-                pictureBox.SizeMode = PictureBoxSizeMode.Zoom;
-                pictureBox.Location = new Point(2, 2);
-                pictureBox.Size = new Size(previewWidth, previewHeight);
-                pictureBox.BackColor = Color.Black;
-                imagePreviewForm.Controls.Add(pictureBox);
-
-                // 绘制边框（与选中项相同的蓝色）
-                imagePreviewForm.Paint += (s, ev) => {
-                    using (Pen borderPen = new Pen(Color.FromArgb(0, 120, 215), 2))
-                    {
-                        ev.Graphics.DrawRectangle(borderPen, 0, 0, imagePreviewForm.Width - 1, imagePreviewForm.Height - 1);
-                    }
-                };
-
-                // 点击预览窗口关闭
-                imagePreviewForm.Click += (s, ev) => {
-                    imagePreviewForm.Close();
-                };
-                pictureBox.Click += (s, ev) => {
-                    imagePreviewForm.Close();
-                };
-
-                // 主窗口失去焦点或隐藏时关闭预览
-                this.Deactivate += CloseImagePreview;
-                this.VisibleChanged += CloseImagePreview;
-
-                imagePreviewForm.Show();
-            }
-            catch
-            {
-                // 图片加载失败时忽略
-                if (imagePreviewForm != null)
-                {
-                    imagePreviewForm.Dispose();
-                    imagePreviewForm = null;
-                }
-            }
-        }
-
-        private void CloseImagePreview(object sender, EventArgs e)
-        {
-            if (imagePreviewForm != null && !imagePreviewForm.IsDisposed)
-            {
-                imagePreviewForm.Close();
-                imagePreviewForm.Dispose();
-                imagePreviewForm = null;
-            }
-        }
-
-        private void ShowTextPreview(string text)
-        {
-            // 创建文字预览窗口
-            Form textPreviewForm = new Form();
-            textPreviewForm.Text = "文字預覽";
-            textPreviewForm.StartPosition = FormStartPosition.CenterParent;
-            textPreviewForm.Size = new Size(600, 400);
-            textPreviewForm.MinimizeBox = false;
-            textPreviewForm.MaximizeBox = false;
-            textPreviewForm.ShowInTaskbar = false;
-            textPreviewForm.FormBorderStyle = FormBorderStyle.FixedDialog;
-
-            // 添加文本框
-            TextBox textBox = new TextBox();
-            textBox.Multiline = true;
-            textBox.ReadOnly = true;
-            textBox.ScrollBars = ScrollBars.Both;
-            textBox.Dock = DockStyle.Fill;
-            textBox.Text = text;
-            textBox.Font = new Font("Microsoft YaHei UI", 10F);
-            textBox.BackColor = isDarkTheme ? Color.FromArgb(30, 30, 30) : Color.White;
-            textBox.ForeColor = isDarkTheme ? Color.FromArgb(220, 220, 220) : Color.Black;
-            
-            textPreviewForm.Controls.Add(textBox);
-            textPreviewForm.ShowDialog(this);
         }
 
         private void SaveHistory()
