@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Data Exfiltration QR Generator</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+        textarea { width: 100%; height: 150px; margin-bottom: 10px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 4px;}
+        button:hover { background-color: #0056b3; }
+        #container { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 20px; }
+        .qr-item { text-align: center; border: 1px solid #ccc; padding: 10px; background: #f9f9f9; }
+        .qr-meta { margin-bottom: 5px; font-weight: bold; color: #333; }
+        .info { color: #666; font-size: 0.9em; margin-bottom: 10px; }
+        canvas { max-width: 100%; height: auto; }
+    </style>
+</head>
+<body>
+
+    <h2>数据传出专用生成器 (Max Payload)</h2>
+    <p class="info">
+        说明：利用 jsDelivr 白名单加载库。输入任意长度文本，自动按照二维码 Version 40 (Low ECC) 的极限容量进行切割生成。
+        <br>当前设定切片阈值：2800 字节/图。
+    </p>
+
+    <textarea id="inputData" placeholder="在此粘贴需要传出的长文本、Base64代码或日志..."></textarea>
+    <br>
+    <button onclick="generateQRs()">生成二维码序列</button>
+
+    <div id="container"></div>
+
+    <script>
+        // 按照字节长度切割字符串 (解决中文占3字节的问题)
+        function splitByBytes(str, limit) {
+            const chunks = [];
+            let currentChunk = '';
+            let currentBytes = 0;
+
+            for (let i = 0; i < str.length; i++) {
+                const char = str[i];
+                // 计算当前字符的字节大小 (简单估算：大于255的按3字节，否则1字节)
+                // 为了更严谨，可以使用 Blob 计算，但这里用简单的逻辑以提高性能
+                const charSize = (char.codePointAt(0) > 0xff) ? 3 : 1;
+
+                if (currentBytes + charSize > limit) {
+                    chunks.push(currentChunk);
+                    currentChunk = char;
+                    currentBytes = charSize;
+                } else {
+                    currentChunk += char;
+                    currentBytes += charSize;
+                }
+            }
+            if (currentChunk) {
+                chunks.push(currentChunk);
+            }
+            return chunks;
+        }
+
+        function generateQRs() {
+            const text = document.getElementById('inputData').value;
+            const container = document.getElementById('container');
+            container.innerHTML = ''; // 清空旧内容
+
+            if (!text) {
+                alert("请输入内容");
+                return;
+            }
+
+            // Version 40-L 最大约 2953 字节。
+            // 留出安全余量，设定为 2800 字节。
+            // 如果内容主要是中文，这大约是 930 个汉字；如果是英文代码，则是 2800 个字符。
+            const CHUNK_SIZE = 2800; 
+            
+            const chunks = splitByBytes(text, CHUNK_SIZE);
+
+            chunks.forEach((chunk, index) => {
+                // 创建容器
+                const div = document.createElement('div');
+                div.className = 'qr-item';
+                
+                // 创建标题
+                const title = document.createElement('div');
+                title.className = 'qr-meta';
+                title.innerText = `Part ${index + 1} / ${chunks.length} (${new Blob([chunk]).size} bytes)`;
+                div.appendChild(title);
+
+                // 创建 Canvas
+                const canvas = document.createElement('canvas');
+                div.appendChild(canvas);
+                container.appendChild(div);
+
+                // 生成二维码
+                QRCode.toCanvas(canvas, chunk, {
+                    errorCorrectionLevel: 'L', // 最低纠错，最大容量
+                    margin: 1,
+                    width: 400, // 显示宽度，不影响容量
+                    version: undefined // 让库自动选择版本，最大会自动升到 40
+                }, function (error) {
+                    if (error) {
+                        console.error(error);
+                        title.innerText += " [生成错误: 数据量可能溢出]";
+                        title.style.color = "red";
+                    }
+                });
+            });
+        }
+    </script>
+</body>
+</html>
